@@ -15,8 +15,8 @@ let appData = {
 let calendar;
 
 // Google API Configuration - REPLACE WITH YOUR CREDENTIALS
-const GOOGLE_API_KEY = 'AIzaSyBIeWsrskXU8zgPEmRQMLuds3_kz8F1ZiI';
-const GOOGLE_CLIENT_ID = '612439385835-qmadllj5nouns0aqdrt4tvvjt9htg2n7.apps.googleusercontent.com';
+const GOOGLE_API_KEY = 'AIzaSyCXlCu4Xl4iu94TwGmtOHv_BvEUZxlwPSk';
+const GOOGLE_CLIENT_ID = '612439385835-vvddjfvh151k187liqauarg6gnl0tjds.apps.googleusercontent.com';
 const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"];
 const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
 
