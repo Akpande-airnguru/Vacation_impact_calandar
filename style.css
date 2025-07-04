@@ -1,11 +1,22 @@
 /* Custom styles for FullCalendar events */
+.fc-event {
+    cursor: pointer; /* Indicates the event is clickable/hoverable */
+    color: #fff;
+    border: 1px solid rgba(0,0,0,0.2);
+}
+
 .fc-event.impact-critical {
-    background-color: #dc3545; /* Red */
-    border-color: #dc3545;
+    background-color: #dc3545; /* Bootstrap Red */
+    border-color: #a71d2a;
 }
 
 .fc-event.impact-warning {
-    background-color: #ffc107; /* Yellow */
-    border-color: #ffc107;
-    color: #000; /* Text color for yellow background */
+    background-color: #ffc107; /* Bootstrap Yellow */
+    border-color: #c79600;
+    color: #000; /* Dark text for yellow background */
+}
+
+.fc-event.google-event {
+    background-color: #0d6efd; /* Bootstrap Blue */
+    border-color: #0a58ca;
 }
