@@ -175,47 +175,64 @@ function processGenericCsvData(data) {
 function initializeCalendar() {
     const calendarEl = document.getElementById('calendar');
     calendar = new FullCalendar.Calendar(calendarEl, {
-        // --- THE CORRECTED CONFIGURATION ---
-        initialView: 'listWeek',
-        // weekends: false, // THIS LINE IS THE BUG. IT HIDES HOLIDAYS AS WELL.
-
-        // This controls the format of the day headers (e.g., "Monday, July 21")
-        listDayFormat: {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric',
-            weekday: 'long' // This is the key to bringing back the day name!
-        },
-
-        // This ensures the button in the header is clear
-        buttonText: {
-            listWeek: 'week' // Rename the button to just "week"
-        },
-        
+        initialView: 'dayGridMonth', // Default to month view now
         headerToolbar: {
             left: 'prev,next today',
             center: 'title',
-            right: 'listWeek,dayGridMonth'
+            right: 'dayGridMonth,listWeek' // Keep both views available
         },
-        // --- END OF CORRECTED CONFIGURATION ---
-
-        noEventsContent: 'All customers are fully covered for this period.',
-
+        dayMaxEvents: true, // THIS IS THE KEY: limits events per day and adds a "+n more" link
+        
+        // --- NEW eventContent RENDERER ---
+        // This function customizes the HTML for each event, making the different types look distinct.
         eventContent: function(arg) {
-            return { html: arg.event.title };
+            let htmlContent = '';
+            // Check if it's a leave event (vacation/holiday)
+            if (arg.event.extendedProps.type) {
+                 htmlContent = `
+                    <div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>
+                `;
+            } 
+            // Otherwise, it's a customer impact event
+            else {
+                // In month view, we only show the customer name for brevity.
+                // The status is shown by the colored border.
+                if (arg.view.type === 'dayGridMonth') {
+                    const mainTitle = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
+                    htmlContent = `<div class="fc-event-title">${mainTitle ? mainTitle[1] : ''}</div>`;
+                } else {
+                    // For list view, use the original rich HTML
+                    htmlContent = arg.event.title;
+                }
+            }
+            return { html: htmlContent };
         },
+
         eventDidMount: function(info) {
+            // Re-initialize tooltips
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
-            new bootstrap.Tooltip(info.el, {
-                title: info.event.extendedProps.description,
-                placement: 'top',
-                trigger: 'hover',
-                container: 'body',
-                html: true
-            });
-        }
+            if (info.event.extendedProps.description) {
+                new bootstrap.Tooltip(info.el, {
+                    title: info.event.extendedProps.description,
+                    placement: 'top',
+                    trigger: 'hover',
+                    container: 'body',
+                    html: true
+                });
+            }
+        },
+        
+        // --- Rest of your existing list view config ---
+        listDayFormat: {
+            month: 'long', day: 'numeric', year: 'numeric', weekday: 'long'
+        },
+        buttonText: {
+            listWeek: 'week',
+            dayGridMonth: 'month'
+        },
+        noEventsContent: 'All customers are fully covered for this period.',
     });
-    // The events property is set after initialization
+    
     calendar.setOption('events', fetchCalendarEvents);
     calendar.render();
 }
@@ -288,8 +305,8 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 });
             });
 
-            const statusClass = `impact-${worstStatus}`;
-            let titleHtml = `<span class="fc-event-title-main ${statusClass}">${customer.name}</span>`;
+            const statusClass = `impact-event impact-${worstStatus}`; // Added "impact-event" class
+            let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${customer.name}</span>`;
             if (statusSummary.length > 0) {
                 titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
             }
@@ -373,12 +390,12 @@ async function fetchGoogleCalendarData(fetchInfo) {
                     start: event.start.date || event.start.dateTime,
                     end: event.end.date || event.end.dateTime,
                     allDay: !!event.start.date,
-                    display: 'background',
-                    className: 'google-event',
+                    // display: 'background', // --- REMOVE THIS LINE ---
+                    className: 'leave-event', // --- CHANGE THIS to 'leave-event' ---
                     extendedProps: {
                         employeeName: type === 'vacation' ? (event.summary.split(':')[1]?.trim() || event.summary) : null,
-                        type: type,
-                        countryCode: eventCountry, // The newly parsed country code
+                        type: type, // Keep the type for the eventContent renderer
+                        countryCode: eventCountry,
                         description: eventTitle
                     }
                 };
