@@ -1,39 +1,48 @@
-/* General body style for better contrast */
+/* General body style for a clean look */
 body {
-    background-color: #f8f9fa; /* Light gray background */
+    background-color: #f8f9fa; /* Light gray */
 }
 
 /* Custom styles for FullCalendar events */
 .fc-event {
     cursor: pointer;
-    border: none !important; /* Remove default borders */
+    border: none !important;
     font-weight: 500;
-    padding: 2px 4px;
+    padding: 3px 5px;
     font-size: 0.8em;
+    border-radius: 4px; /* Slightly rounded corners */
+    color: #fff !important; /* White text for all impact events */
 }
 
-/* Red for critical impact - more modern feel */
+/* Red for critical impact */
 .fc-event.impact-critical {
-    background-color: #e63946 !important; /* A strong but not glaring red */
-    color: #fff !important;
+    background-color: #dc3545 !important; /* Bootstrap Red */
 }
 
 /* Yellow for warning impact */
 .fc-event.impact-warning {
-    background-color: #ffbe0b !important;
-    color: #000 !important;
+    background-color: #ffc107 !important; /* Bootstrap Yellow */
+    color: #000 !important; /* Black text for yellow background */
+}
+
+/* NEW: Green for covered status */
+.fc-event.impact-covered {
+    background-color: #198754 !important; /* Bootstrap Green */
 }
 
 /* Style for the background events (vacations/holidays) */
 .fc-event.google-event .fc-event-main {
-    /* This makes the event semi-transparent */
     opacity: 0.6;
+}
+.fc-daygrid-event.google-event {
+    font-size: 0.75em; /* Make background event text smaller */
 }
 
 /* Style the tooltip for better readability */
 .tooltip-inner {
     max-width: 350px;
     padding: 10px;
-    background-color: #343a40;
+    background-color: #212529; /* Dark background */
     text-align: left;
+    border-radius: 0.3rem;
 }
