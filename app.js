@@ -204,7 +204,7 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 const potentialStaffPool = appData.employees.filter(e => teams.includes(e.team));
                 const onLeaveNames = new Set();
                 const availableStaffPool = potentialStaffPool.filter(emp => {
-                    const onVacation = leaveEvents.some(leave => !leave.extendedProps.isHoliday && leave.extendedProps.employeeName === emp.name && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                    const onVacation = leaveEvents.some(leave => !leave.extendedProps.isHoliday && leave.extendedProps.employeeName.includes(emp.name) &&  currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
                     if (onVacation) { onLeaveNames.add(`${emp.name} (Vacation)`); return false; }
                     const onPublicHoliday = leaveEvents.some(leave => leave.extendedProps.isHoliday && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
                     if (onPublicHoliday) { onLeaveNames.add(`${emp.name} (Holiday)`); return false; }
