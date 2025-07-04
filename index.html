@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Impact Calendar</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- FullCalendar CSS -->
+    <link href='lib/fullcalendar/main.min.css' rel='stylesheet' />
+    <!-- Your Custom CSS -->
+    <link href='style.css' rel='stylesheet' />
+</head>
+<body>
+    <div class="container-fluid p-4">
+        <h1 class="mb-4">Customer Impact Calendar</h1>
+
+        <!-- Section for Data Management -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <h2>Data Management</h2>
+                <!-- Forms for adding Customer, Employee, etc. go here -->
+                <div id="data-input-forms">
+                    <!-- We will generate these forms with JS -->
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h2>Integrations</h2>
+                <!-- Bulk Import -->
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Bulk Import from CSV</h5>
+                        <p>Upload a CSV file to add customers, employees, and assignments.</p>
+                        <input type="file" id="csv-import" class="form-control" accept=".csv">
+                    </div>
+                </div>
+                <!-- Google Calendar -->
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Google Calendar Sync</h5>
+                        <p>Connect to sync holidays and vacations.</p>
+                        <button id="authorize_button" class="btn btn-primary">Connect Google Calendar</button>
+                        <button id="signout_button" class="btn btn-secondary" style="display: none;">Sign Out</button>
+                        <div id="calendar-selection" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- The Calendar Display -->
+        <div id='calendar'></div>
+    </div>
+
+    <!-- JavaScript Libraries -->
+    <script src="lib/papaparse.min.js"></script>
+    <script src='lib/fullcalendar/main.min.js'></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+    
+    <!-- Your App Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
