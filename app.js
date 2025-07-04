@@ -160,28 +160,28 @@ function initializeCalendar() {
     const calendarEl = document.getElementById('calendar');
     calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'listWeek',
+        // --- THIS IS THE NEW LINE ---
+        weekends: false, // This hides Saturday and Sunday
+        // --- END OF NEW LINE ---
         headerToolbar: {
             left: 'prev,next today',
             center: 'title',
             right: 'listWeek,dayGridMonth'
         },
         noEventsContent: 'All customers are fully covered for this period.',
-        events: fetchCalendarEvents,
-
-        // --- NEW and IMPORTANT ---
-        // This hook tells FullCalendar to render the event.title as HTML
         eventContent: function(arg) {
             return { html: arg.event.title };
         },
-        // --- END OF NEW PART ---
-
-        eventDidMount: (info) => new bootstrap.Tooltip(info.el, {
-            title: info.event.extendedProps.description,
-            placement: 'top',
-            trigger: 'hover',
-            container: 'body',
-            html: true
-        })
+        eventDidMount: function(info) {
+            document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
+            new bootstrap.Tooltip(info.el, {
+                title: info.event.extendedProps.description,
+                placement: 'top',
+                trigger: 'hover',
+                container: 'body',
+                html: true
+            });
+        }
     });
     calendar.render();
 }
@@ -209,12 +209,22 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     const teamStaffPool = appData.employees.filter(e => e.team === teamName);
                     const onLeaveNames = new Set();
                     const availableStaff = teamStaffPool.filter(emp => {
-                        const onVacation = leaveEvents.some(leave => !leave.extendedProps.isHoliday && leave.extendedProps.employeeName.includes(emp.name) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        // Check for personal vacation
+                        const onVacation = leaveEvents.some(leave => leave.extendedProps.type === 'vacation' && leave.extendedProps.employeeName.includes(emp.name) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
                         if (onVacation) { onLeaveNames.add(`${emp.name} (Vacation)`); return false; }
-                        const onPublicHoliday = leaveEvents.some(leave => leave.extendedProps.isHoliday && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
-                        if (onPublicHoliday) { onLeaveNames.add(`${emp.name} (Holiday)`); return false; }
+                        
+                        // Check for a company-wide holiday from the user's selected calendar
+                        const onCompanyHoliday = leaveEvents.some(leave => leave.extendedProps.type === 'companyHoliday' && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        if (onCompanyHoliday) { onLeaveNames.add(`${emp.name} (Company Holiday)`); return false; }
+
+                        // --- THIS IS THE CRITICAL FIX ---
+                        // Check for a public holiday ONLY in the employee's specific country
+                        const onPublicHoliday = leaveEvents.some(leave => leave.extendedProps.type === 'publicHoliday' && leave.extendedProps.countryCode === emp.country.toLowerCase() && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        if (onPublicHoliday) { onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`); return false; }
+                        
                         return true;
                     });
+                    
                     const availableCount = availableStaff.length;
                     let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${minPerTeam}`;
                     if (availableCount < minPerTeam) {
@@ -235,22 +245,13 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 });
             });
 
-            // --- THIS IS THE UPDATED PART ---
-            // We add the impact class directly to the title span
             const statusClass = `impact-${worstStatus}`;
             let titleHtml = `<span class="fc-event-title-main ${statusClass}">${customer.name}</span>`;
             if (statusSummary.length > 0) {
                 titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
             }
-            const eventData = {
-                title: titleHtml,
-                start: currentDateStr,
-                allDay: true,
-                className: statusClass, // The border color still uses this
-                description: impactDetails.join('<br>')
-            };
+            const eventData = { title: titleHtml, start: currentDateStr, allDay: true, className: statusClass, description: impactDetails.join('<br>') };
             impactEvents.push(eventData);
-            // --- END OF UPDATE ---
         });
     }
     return impactEvents;
@@ -272,33 +273,60 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
 
 async function fetchGoogleCalendarData(fetchInfo) {
     const { vacationCalendarId, holidayCalendarId } = appData.settings;
-    if (gapi.client.getToken() === null || (!vacationCalendarId && !holidayCalendarId)) { return []; }
+    if (gapi.client.getToken() === null) return [];
     const { startStr, endStr } = fetchInfo;
     const promises = [];
+
+    // 1. Fetch from user's selected "Vacation" calendar
     if (vacationCalendarId) {
-        promises.push(gapi.client.calendar.events.list({ calendarId: vacationCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'vacation' })));
+        promises.push(
+            gapi.client.calendar.events.list({ calendarId: vacationCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
+            .then(response => ({ response, type: 'vacation' }))
+        );
     }
+    // 2. Fetch from user's selected "Official Holiday" calendar (these are company-wide)
     if (holidayCalendarId) {
-        promises.push(gapi.client.calendar.events.list({ calendarId: holidayCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'holiday' })));
+        promises.push(
+            gapi.client.calendar.events.list({ calendarId: holidayCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
+            .then(response => ({ response, type: 'companyHoliday' }))
+        );
     }
+    
+    // 3. Fetch public holidays for each unique EMPLOYEE country
+    const employeeCountries = [...new Set(appData.employees.map(e => e.country.toLowerCase()))];
+    employeeCountries.forEach(code => {
+        const googleCountryCode = mapCountryCode(code);
+        if (googleCountryCode) {
+            promises.push(
+                gapi.client.calendar.events.list({ calendarId: `en.${googleCountryCode}#holiday@group.v.calendar.google.com`, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
+                .then(response => ({ response, type: 'publicHoliday', countryCode: code })) // Tag with country
+                .catch(error => ({ error, countryCode: code }))
+            );
+        }
+    });
+
     const results = await Promise.allSettled(promises);
     let allEvents = [];
     results.forEach(result => {
         if (result.status === 'fulfilled') {
-            const { response, type } = result.value;
+            const { response, type, countryCode } = result.value;
             const events = response.result.items || [];
-            const isHoliday = type === 'holiday';
+            
             const mappedEvents = events.map(event => ({
                 title: event.summary, start: event.start.date || event.start.dateTime, end: event.end.date || event.end.dateTime,
                 allDay: !!event.start.date, display: 'background', className: 'google-event',
-                extendedProps: { employeeName: isHoliday ? null : (event.summary.split(':')[1]?.trim() || event.summary), isHoliday: isHoliday, description: event.summary }
+                extendedProps: {
+                    employeeName: type === 'vacation' ? (event.summary.split(':')[1]?.trim() || event.summary) : null,
+                    type: type, // 'vacation', 'companyHoliday', or 'publicHoliday'
+                    countryCode: countryCode, // Will be undefined for vacation/company holidays
+                    description: event.summary
+                }
             }));
             allEvents = allEvents.concat(mappedEvents);
         } else { console.error("Failed to fetch calendar:", result.reason); }
     });
     return allEvents;
 }
-
 async function populateCalendarSelectors() {
     try {
         const response = await gapi.client.calendar.calendarList.list();
