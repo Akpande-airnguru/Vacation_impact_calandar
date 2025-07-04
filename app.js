@@ -176,6 +176,18 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
             let isUnderstaffed = false;
             let isAtRisk = false;
             const impactDetails = [];
+            
+            // If there are no requirements, the customer is always covered.
+            if (!customer.requirements || customer.requirements.length === 0) {
+                impactEvents.push({
+                    title: customer.name,
+                    start: currentDateStr, allDay: true,
+                    className: 'impact-covered',
+                    description: 'No staffing requirements defined.'
+                });
+                return; // Go to the next customer
+            }
+
             customer.requirements.forEach(req => {
                 const { teams, min } = req;
                 const potentialStaffPool = appData.employees.filter(e => teams.includes(e.team));
@@ -199,13 +211,16 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 }
                 if (onLeaveNames.size > 0) { impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); }
             });
-            if (isUnderstaffed || isAtRisk) {
-                const description = impactDetails.join('<br>');
-                if (isUnderstaffed) {
-                    impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-critical', description });
-                } else {
-                    impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-warning', description });
-                }
+
+            // THIS IS THE KEY CHANGE: We now create an event for every status.
+            const description = impactDetails.join('<br>');
+            if (isUnderstaffed) {
+                impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-critical', description });
+            } else if (isAtRisk) {
+                impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-warning', description });
+            } else {
+                // Add the "Covered" event
+                impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-covered', description });
             }
         });
     }
