@@ -76,6 +76,7 @@ function loadDataFromLocalStorage() {
 function setupEventListeners() {
     // Bulk Import
     document.getElementById('csv-import').addEventListener('change', handleCsvImport);
+    document.getElementById('download-template-btn').addEventListener('click', downloadCsvTemplate);
 
     // Google Calendar Buttons
     document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
@@ -468,4 +469,31 @@ function addCustomer(name, country, minEmployees) {
     renderManagementTables(); // Update the list
     calendar.refetchEvents(); // Re-calculate impacts
     alert(`${name} added!`);
+}
+
+function downloadCsvTemplate(event) {
+    event.preventDefault(); // Prevent the link's default behavior
+
+    const csvContent = [
+        "type,name,detail1,detail2",
+        "customer,Customer Alpha,USA,2",
+        "customer,Customer Bravo,Germany,3",
+        "employee,Alice,Dev Team",
+        "employee,Bob,Support Team",
+        "employee,Carol,Dev Team",
+        "assignment,Alice,Customer Alpha",
+        "assignment,Bob,Customer Alpha",
+        "assignment,Carol,Customer Bravo",
+        "assignment,Alice,Customer Bravo"
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "import_template.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
