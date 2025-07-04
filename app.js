@@ -216,7 +216,7 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 .map(a => appData.employees.find(e => e.id === a.employeeId))
                 .filter(Boolean);
 
-            if (assignedEmployees.length === 0) continue; // Skip if no one is assigned
+            if (assignedEmployees.length === 0) return; // Skip if no one is assigned
 
             // Check each requirement (e.g., '2 from Dev Team')
             customer.requirements.forEach(req => {
