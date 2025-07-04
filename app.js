@@ -36,9 +36,8 @@ function initializeApp() {
     gapi.load('client', initializeGapiClient);
 }
 
-
 // =================================================================================
-// 2. DATA PERSISTENCE & UI (Largely Unchanged)
+// 2. DATA PERSISTENCE & UI
 // =================================================================================
 
 function saveDataToLocalStorage() {
@@ -49,8 +48,12 @@ function saveDataToLocalStorage() {
 function loadDataFromLocalStorage() {
     const savedData = localStorage.getItem('resourcePlannerData');
     if (savedData) {
-        appData = JSON.parse(savedData);
-        console.log("Data loaded from localStorage.");
+        // Merge saved data with defaults to ensure new properties exist
+        const loadedData = JSON.parse(savedData);
+        appData = { ...appData, ...loadedData };
+        if (!appData.settings) { // Backwards compatibility for old save data
+            appData.settings = { vacationCalendarId: null, holidayCalendarId: null };
+        }
     }
 }
 
@@ -59,8 +62,21 @@ function setupEventListeners() {
     document.getElementById('download-template-btn').addEventListener('click', downloadCsvTemplate);
     document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
     document.getElementById('signout_button').addEventListener('click', handleSignoutClick);
+    
+    // Listen for changes on the new calendar selectors
+    document.getElementById('vacation-calendar-select').addEventListener('change', (e) => {
+        appData.settings.vacationCalendarId = e.target.value;
+        saveDataToLocalStorage();
+        calendar.refetchEvents();
+    });
+    document.getElementById('holiday-calendar-select').addEventListener('change', (e) => {
+        appData.settings.holidayCalendarId = e.target.value;
+        saveDataToLocalStorage();
+        calendar.refetchEvents();
+    });
 }
 
+// ... (renderManagementTables, downloadCsvTemplate, handleCsvImport, parseGenericFields, processGenericCsvData functions remain the same as the previous "Rule-Based Engine" version) ...
 function renderManagementTables() {
     const customerList = appData.customers.map(c => {
         const reqs = c.requirements.map(r => `${r.teams.join(', ')}: ${r.min} required`).join('<br>');
@@ -75,91 +91,40 @@ function renderManagementTables() {
     </div></div>`;
 }
 
-// =================================================================================
-// 3. GENERIC CSV IMPORT & EXPORT
-// =================================================================================
-
-// UPDATED to new generic template format
 function downloadCsvTemplate(event) {
     event.preventDefault();
-    const csvContent = [
-        "type,name,country,field_1_condition,field_1_value,field_2_condition,field_2_value,field_3_condition,field_3_value",
-        "customer,Heron,AUH,required_team,\"product,fenix,rudras\",required_employee_per_team,1,,",
-        "customer,Hawk,QAR,required_team,\"product,fenix,rudras\",required_employee_per_team,2,,",
-        "employee,Akshay,IND,team,product,,,,",
-        "employee,Bob,AUH,team,fenix,,,,",
-        "employee,Carol,QAR,team,rudras,,,,"
-    ].join("\n");
+    const csvContent = [ "type,name,country,field_1_condition,field_1_value,field_2_condition,field_2_value", "customer,Heron,AUH,required_team,\"product,fenix,rudras\",required_employee_per_team,1", "customer,Hawk,QAR,required_team,\"product,fenix,rudras\",required_employee_per_team,2", "employee,Akshay,IND,team,product", "employee,Bob,AUH,team,fenix", "employee,Carol,QAR,team,rudras" ].join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.setAttribute("href", URL.createObjectURL(blob));
     link.setAttribute("download", "generic_rules_template.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
 }
 
 function handleCsvImport(event) {
     const file = event.target.files[0];
     if (file) {
-        Papa.parse(file, {
-            header: true,
-            skipEmptyLines: true,
-            complete: (results) => {
-                processGenericCsvData(results.data);
-                saveDataToLocalStorage();
-                alert('Data imported successfully! The page will now reload.');
-                location.reload();
-            },
-            error: (err) => alert(`CSV Parsing Error: ${err.message}`)
-        });
+        Papa.parse(file, { header: true, skipEmptyLines: true, complete: (results) => { processGenericCsvData(results.data); saveDataToLocalStorage(); alert('Data imported successfully! The page will now reload.'); location.reload(); }, error: (err) => alert(`CSV Parsing Error: ${err.message}`) });
     }
 }
 
-/**
- * Parses the generic field_X_condition/value pairs from a CSV row.
- * @param {object} row - A row object from PapaParse.
- * @returns {object} A simplified object like { team: 'product', ... }
- */
 function parseGenericFields(row) {
     const fields = {};
-    for (let i = 1; i <= 4; i++) { // Check up to 4 field pairs
-        const condition = row[`field_${i}_condition`];
-        const value = row[`field_${i}_value`];
-        if (condition) {
-            fields[condition] = value;
-        }
-    }
+    for (let i = 1; i <= 4; i++) { const condition = row[`field_${i}_condition`]; const value = row[`field_${i}_value`]; if (condition) { fields[condition] = value; } }
     return fields;
 }
 
-// REWRITTEN to handle the generic format
 function processGenericCsvData(data) {
     appData = { customers: [], employees: [] };
     const generateId = () => Date.now() + Math.random();
-
     data.forEach(row => {
         const type = row.type?.toLowerCase().trim();
         const fields = parseGenericFields(row);
-
-        if (type === 'employee') {
-            appData.employees.push({
-                id: generateId(),
-                name: row.name,
-                country: row.country,
-                team: fields.team
-            });
+        if (type === 'employee') { appData.employees.push({ id: generateId(), name: row.name, country: row.country, team: fields.team });
         } else if (type === 'customer') {
-            const requirement = {
-                teams: fields.required_team.split(',').map(t => t.trim()),
-                min: parseInt(fields.required_employee_per_team, 10)
-            };
-            
+            const requirement = { teams: fields.required_team.split(',').map(t => t.trim()), min: parseInt(fields.required_employee_per_team, 10) };
             let customer = appData.customers.find(c => c.name === row.name);
-            if (!customer) {
-                customer = { id: generateId(), name: row.name, country: row.country, requirements: [] };
-                appData.customers.push(customer);
-            }
+            if (!customer) { customer = { id: generateId(), name: row.name, country: row.country, requirements: [] }; appData.customers.push(customer); }
             customer.requirements.push(requirement);
         }
     });
@@ -167,7 +132,7 @@ function processGenericCsvData(data) {
 }
 
 // =================================================================================
-// 4. CALENDAR DISPLAY & RULE-BASED LOGIC ENGINE
+// 4. CALENDAR DISPLAY & LOGIC
 // =================================================================================
 
 function initializeCalendar() {
@@ -181,82 +146,39 @@ function initializeCalendar() {
     calendar.render();
 }
 
-// REWRITTEN with accurate rule-based logic
+// REWRITTEN: Logic for holidays is now based on selected Holiday calendar, not employee country
 function generateImpactEvents(fetchInfo, leaveEvents = []) {
+    // ... (This function is largely the same as the previous version, BUT we simplify the holiday logic) ...
+    // The key change is that a holiday from the selected calendar affects ALL employees.
     const impactEvents = [];
     const { start, end } = fetchInfo;
-
     for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
         const currentDateStr = day.toISOString().split('T')[0];
-
         appData.customers.forEach(customer => {
             let isUnderstaffed = false;
             let isAtRisk = false;
             const impactDetails = [];
-
-            // Check each requirement for the customer (e.g., "1 person from product,fenix,rudras")
             customer.requirements.forEach(req => {
                 const { teams, min } = req;
-                
-                // 1. Find all employees who could possibly fulfill this requirement
                 const potentialStaffPool = appData.employees.filter(e => teams.includes(e.team));
-                
-                // 2. Determine who from that pool is actually on leave today
                 const onLeaveNames = new Set();
                 const availableStaffPool = potentialStaffPool.filter(emp => {
-                    // Check for personal vacation
-                    const onVacation = leaveEvents.some(leave =>
-                        !leave.extendedProps.isHoliday &&
-                        leave.extendedProps.employeeName === emp.name &&
-                        currentDateStr >= leave.start &&
-                        currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
-                    );
-                    if (onVacation) {
-                        onLeaveNames.add(`${emp.name} (Vacation)`);
-                        return false; // Not available
-                    }
-
-                    // Check for public holiday in the employee's specific country
-                    const onPublicHoliday = leaveEvents.some(leave =>
-                        leave.extendedProps.isHoliday &&
-                        leave.extendedProps.countryCode === emp.country.toLowerCase() &&
-                        currentDateStr >= leave.start &&
-                        currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
-                    );
-                    if (onPublicHoliday) {
-                        onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`);
-                        return false; // Not available
-                    }
-
-                    return true; // Is available
+                    const onVacation = leaveEvents.some(leave => !leave.extendedProps.isHoliday && leave.extendedProps.employeeName === emp.name && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                    if (onVacation) { onLeaveNames.add(`${emp.name} (Vacation)`); return false; }
+                    const onPublicHoliday = leaveEvents.some(leave => leave.extendedProps.isHoliday && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                    if (onPublicHoliday) { onLeaveNames.add(`${emp.name} (Holiday)`); return false; }
+                    return true;
                 });
-
                 const availableCount = availableStaffPool.length;
-
-                // 3. Compare available staff to the minimum required
-                if (availableCount < min) {
-                    isUnderstaffed = true;
-                    impactDetails.push(`<b>Team(s) ${teams.join('/')}:</b> ${availableCount}/${min} <strong class="text-danger">(Critical)</strong>`);
-                } else if (availableCount === min) {
-                    isAtRisk = true;
-                    impactDetails.push(`<b>Team(s) ${teams.join('/')}:</b> ${availableCount}/${min} <strong class="text-warning">(Warning)</strong>`);
-                } else {
-                    impactDetails.push(`<b>Team(s) ${teams.join('/')}:</b> ${availableCount}/${min} (OK)`);
-                }
-
-                if (onLeaveNames.size > 0) {
-                    impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`);
-                }
+                if (availableCount < min) { isUnderstaffed = true; impactDetails.push(`<b>${teams.join('/')}:</b> ${availableCount}/${min} <strong class="text-danger">(Critical)</strong>`);
+                } else if (availableCount === min) { isAtRisk = true; impactDetails.push(`<b>${teams.join('/')}:</b> ${availableCount}/${min} <strong class="text-warning">(Warning)</strong>`);
+                } else { impactDetails.push(`<b>${teams.join('/')}:</b> ${availableCount}/${min} (OK)`); }
+                if (onLeaveNames.size > 0) { impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); }
             });
-
-            // Create a single, summarized event for the customer for that day
             if (isUnderstaffed || isAtRisk) {
                 const description = impactDetails.join('<br>');
-                if (isUnderstaffed) {
-                    impactEvents.push({ title: `${customer.name}: Understaffed`, start: currentDateStr, allDay: true, className: 'impact-critical', description });
-                } else {
-                    impactEvents.push({ title: `${customer.name}: At Risk`, start: currentDateStr, allDay: true, className: 'impact-warning', description });
-                }
+                if (isUnderstaffed) { impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-critical', description });
+                } else { impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-warning', description }); }
             }
         });
     }
@@ -265,7 +187,7 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
 
 
 // =================================================================================
-// 5. GOOGLE CALENDAR API INTEGRATION (No changes needed here)
+// 5. GOOGLE CALENDAR API INTEGRATION (Major Rewrite)
 // =================================================================================
 
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
@@ -279,59 +201,97 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
     }
 }
 
+// REWRITTEN to use selected calendar IDs
 async function fetchGoogleCalendarData(fetchInfo) {
-    if (gapi.client.getToken() === null) return [];
+    const { vacationCalendarId, holidayCalendarId } = appData.settings;
+    if (gapi.client.getToken() === null || (!vacationCalendarId && !holidayCalendarId)) {
+        return []; // Not signed in or no calendars selected
+    }
+
     const { startStr, endStr } = fetchInfo;
     const promises = [];
 
-    promises.push(gapi.client.calendar.events.list({ 'calendarId': 'primary', 'timeMin': startStr, 'timeMax': endStr, 'singleEvents': true, 'orderBy': 'startTime' }));
+    // Add promise for vacation calendar if selected
+    if (vacationCalendarId) {
+        promises.push(
+            gapi.client.calendar.events.list({ calendarId: vacationCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
+            .then(response => ({ response, type: 'vacation' }))
+        );
+    }
+    // Add promise for holiday calendar if selected
+    if (holidayCalendarId) {
+        promises.push(
+            gapi.client.calendar.events.list({ calendarId: holidayCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
+            .then(response => ({ response, type: 'holiday' }))
+        );
+    }
 
-    // Fetch holidays for all unique employee countries, not just customer countries
-    const countries = [...new Set(appData.employees.map(e => e.country.toLowerCase()))];
-    countries.forEach(code => {
-        const googleCountryCode = mapCountryCode(code);
-        if (googleCountryCode) {
-            promises.push(
-                gapi.client.calendar.events.list({ 'calendarId': `en.${googleCountryCode}#holiday@group.v.calendar.google.com`, 'timeMin': startStr, 'timeMax': endStr, 'singleEvents': true, 'orderBy': 'startTime' })
-                .then(response => ({ response, countryCode: code }))
-                .catch(error => ({ error, countryCode: code }))
-            );
-        }
-    });
-
-    const responses = await Promise.all(promises);
+    const results = await Promise.allSettled(promises);
     let allEvents = [];
     
-    responses.forEach((result) => {
-        const isPersonalCalendar = !result.countryCode;
-        if (result.error) {
-            console.warn(`Could not fetch holiday calendar for country: ${result.countryCode}`);
-            return;
-        }
-        const response = isPersonalCalendar ? result : result.response;
-        const events = response.result.items || [];
-        const mappedEvents = events.map(event => {
-            const employeeName = isPersonalCalendar ? (event.summary.split(':')[1]?.trim() || event.summary) : null;
-            return {
-                title: `🗓️ ${event.summary}`,
+    results.forEach(result => {
+        if (result.status === 'fulfilled') {
+            const { response, type } = result.value;
+            const events = response.result.items || [];
+            const isHoliday = type === 'holiday';
+
+            const mappedEvents = events.map(event => ({
+                title: event.summary, // Simpler title
                 start: event.start.date || event.start.dateTime,
                 end: event.end.date || event.end.dateTime,
                 allDay: !!event.start.date,
                 display: 'background',
-                extendedProps: { employeeName, isHoliday: !isPersonalCalendar, countryCode: result.countryCode, description: event.summary }
-            };
-        });
-        allEvents = allEvents.concat(mappedEvents);
+                className: 'google-event',
+                extendedProps: {
+                    employeeName: isHoliday ? null : (event.summary.split(':')[1]?.trim() || event.summary),
+                    isHoliday: isHoliday,
+                    description: event.summary
+                }
+            }));
+            allEvents = allEvents.concat(mappedEvents);
+        } else {
+            console.error("Failed to fetch calendar:", result.reason);
+        }
     });
     return allEvents;
 }
 
-function mapCountryCode(code) {
-    const map = { 'usa': 'usa', 'pol': 'polish', 'auh': 'ae', 'qar': 'qa.qatari', 'bru': 'be.belgian', 'spa': 'spain', 'ind': 'indian' };
-    return map[code];
+// NEW function to populate the calendar selection dropdowns
+async function populateCalendarSelectors() {
+    try {
+        const response = await gapi.client.calendar.calendarList.list();
+        const calendars = response.result.items;
+        const vacationSelect = document.getElementById('vacation-calendar-select');
+        const holidaySelect = document.getElementById('holiday-calendar-select');
+
+        // Clear existing options except the first one
+        vacationSelect.innerHTML = '<option value="">-- Select a calendar --</option>';
+        holidaySelect.innerHTML = '<option value="">-- Select a calendar --</option>';
+
+        calendars.forEach(cal => {
+            const option = new Option(cal.summary, cal.id);
+            vacationSelect.add(option.cloneNode(true));
+            holidaySelect.add(option);
+        });
+        
+        // Pre-select saved values
+        if (appData.settings.vacationCalendarId) {
+            vacationSelect.value = appData.settings.vacationCalendarId;
+        }
+        if (appData.settings.holidayCalendarId) {
+            holidaySelect.value = appData.settings.holidayCalendarId;
+        }
+
+        document.getElementById('calendar-selection-ui').style.display = 'block';
+
+    } catch (error) {
+        console.error("Could not fetch user's calendar list:", error);
+        alert("Could not load your calendar list. Please try refreshing or re-connecting.");
+    }
 }
 
-// All other Google Auth functions (gisLoaded, handleAuthClick, etc.) remain the same
+
+// All Google Auth functions (gisLoaded, handleAuthClick, etc.) are modified to call populateCalendarSelectors
 window.gisLoaded = function() {
     tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '', });
     gisInited = true;
@@ -342,6 +302,10 @@ async function initializeGapiClient() {
         await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS });
         gapiInited = true;
         maybeEnableButtons();
+        // If user is already signed in on load, populate selectors
+        if (gapi.client.getToken()) {
+            populateCalendarSelectors();
+        }
     } catch (e) { console.error("Error initializing GAPI client:", e); }
 }
 function maybeEnableButtons() {
@@ -352,6 +316,7 @@ function handleAuthClick() {
         if (resp.error) throw (resp);
         document.getElementById('signout_button').style.display = 'block';
         document.getElementById('authorize_button').innerText = 'Refresh Connection';
+        await populateCalendarSelectors(); // Populate after successful login
         calendar.refetchEvents();
     };
     if (gapi.client.getToken() === null) { tokenClient.requestAccessToken({ prompt: 'consent' }); }
@@ -363,6 +328,15 @@ function handleSignoutClick() {
         google.accounts.oauth2.revoke(token.access_token);
         gapi.client.setToken('');
         document.getElementById('signout_button').style.display = 'none';
+        document.getElementById('authorize_button').innerText = 'Connect Google Calendar';
+        document.getElementById('calendar-selection-ui').style.display = 'none'; // Hide selectors
+        // Clear saved settings and refetch
+        appData.settings.vacationCalendarId = null;
+        appData.settings.holidayCalendarId = null;
+        saveDataToLocalStorage();
+        calendar.refetchEvents();
+    }
+}
         document.getElementById('authorize_button').innerText = 'Connect Google Calendar';
         calendar.refetchEvents();
     }
