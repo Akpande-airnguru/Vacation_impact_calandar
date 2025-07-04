@@ -181,63 +181,81 @@ function initializeCalendar() {
 function generateImpactEvents(fetchInfo, leaveEvents = []) {
     const impactEvents = [];
     const { start, end } = fetchInfo;
+
     for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
         const currentDateStr = day.toISOString().split('T')[0];
+
         appData.customers.forEach(customer => {
             let isUnderstaffed = false;
             let isAtRisk = false;
             const impactDetails = [];
             
-            // If there are no requirements, the customer is always covered.
+            // If no requirements, customer is always covered.
             if (!customer.requirements || customer.requirements.length === 0) {
                 impactEvents.push({
-                    title: customer.name,
-                    start: currentDateStr, allDay: true,
-                    className: 'impact-covered',
-                    description: 'No staffing requirements defined.'
+                    title: customer.name, start: currentDateStr, allDay: true,
+                    className: 'impact-covered', description: 'No staffing requirements defined.'
                 });
-                return; // Go to the next customer
+                return; // Skips to the next customer in the forEach loop
             }
 
+            // Loop through each requirement rule (e.g., "1 person from product,fenix,rudras")
             customer.requirements.forEach(req => {
-                const { teams, min } = req;
-                const potentialStaffPool = appData.employees.filter(e => teams.includes(e.team));
-                const onLeaveNames = new Set();
-                const availableStaffPool = potentialStaffPool.filter(emp => {
-                    const onVacation = leaveEvents.some(leave => !leave.extendedProps.isHoliday && leave.extendedProps.employeeName.includes(emp.name) &&  currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
-                    if (onVacation) { onLeaveNames.add(`${emp.name} (Vacation)`); return false; }
-                    const onPublicHoliday = leaveEvents.some(leave => leave.extendedProps.isHoliday && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
-                    if (onPublicHoliday) { onLeaveNames.add(`${emp.name} (Holiday)`); return false; }
-                    return true;
+                const requiredTeams = req.teams; // e.g., ['product', 'fenix', 'rudras']
+                const minPerTeam = req.min;   // e.g., 1
+
+                // --- THIS IS THE NEW CORE LOGIC ---
+                // Now, check EACH of the required teams individually.
+                requiredTeams.forEach(teamName => {
+                    // 1. Find all employees who are in this specific team.
+                    const teamStaffPool = appData.employees.filter(e => e.team === teamName);
+                    const totalInTeam = teamStaffPool.length;
+
+                    // 2. Determine who from that team is on leave today.
+                    const onLeaveNames = new Set();
+                    const availableStaff = teamStaffPool.filter(emp => {
+                        const onVacation = leaveEvents.some(leave => !leave.extendedProps.isHoliday && leave.extendedProps.employeeName.includes(emp.name) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        if (onVacation) { onLeaveNames.add(`${emp.name} (Vacation)`); return false; }
+                        
+                        const onPublicHoliday = leaveEvents.some(leave => leave.extendedProps.isHoliday && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        if (onPublicHoliday) { onLeaveNames.add(`${emp.name} (Holiday)`); return false; }
+                        
+                        return true;
+                    });
+
+                    const availableCount = availableStaff.length;
+
+                    // 3. Compare available staff to the minimum required *per team*.
+                    if (availableCount < minPerTeam) {
+                        isUnderstaffed = true;
+                        impactDetails.push(`<b>Team ${teamName}:</b> ${availableCount}/${minPerTeam} <strong class="text-danger">(Critical)</strong>`);
+                    } else if (availableCount === minPerTeam) {
+                        isAtRisk = true;
+                        impactDetails.push(`<b>Team ${teamName}:</b> ${availableCount}/${minPerTeam} <strong class="text-warning">(Warning)</strong>`);
+                    } else {
+                        impactDetails.push(`<b>Team ${teamName}:</b> ${availableCount}/${minPerTeam} (OK)`);
+                    }
+
+                    if (onLeaveNames.size > 0) {
+                        impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`);
+                    }
                 });
-                const availableCount = availableStaffPool.length;
-                if (availableCount < min) {
-                    isUnderstaffed = true;
-                    impactDetails.push(`<b>${teams.join('/')}:</b> ${availableCount}/${min} <strong class="text-danger">(Critical)</strong>`);
-                } else if (availableCount === min) {
-                    isAtRisk = true;
-                    impactDetails.push(`<b>${teams.join('/')}:</b> ${availableCount}/${min} <strong class="text-warning">(Warning)</strong>`);
-                } else {
-                    impactDetails.push(`<b>${teams.join('/')}:</b> ${availableCount}/${min} (OK)`);
-                }
-                if (onLeaveNames.size > 0) { impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); }
+                // --- END OF NEW CORE LOGIC ---
             });
 
-            // THIS IS THE KEY CHANGE: We now create an event for every status.
+            // Create a single, summarized event for the customer for that day based on the worst status found.
             const description = impactDetails.join('<br>');
             if (isUnderstaffed) {
                 impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-critical', description });
             } else if (isAtRisk) {
                 impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-warning', description });
             } else {
-                // Add the "Covered" event
                 impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-covered', description });
             }
         });
     }
     return impactEvents;
 }
-
 
 // =================================================================================
 // 5. GOOGLE CALENDAR API INTEGRATION
