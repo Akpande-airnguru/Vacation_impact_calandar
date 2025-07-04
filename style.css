@@ -1,105 +1,97 @@
-/* style.css - GOOGLE CALENDAR INSPIRED REFRESH */
+/* style.css - PROFESSIONAL DASHBOARD REFRESH */
 
 /* 1. GENERAL PAGE & LAYOUT STYLES */
 body {
-    background-color: #ffffff; /* A clean white background */
-    font-family: 'Roboto', 'Segoe UI', Arial, sans-serif; /* Modern font stack */
-    color: #3c4043; /* Google's standard text color */
+    background-color: #f8f9fa;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #212529;
 }
 
 .card {
-    border: 1px solid #dadce0; /* Softer Google-style border */
-    border-radius: 8px; /* Rounded corners */
+    border: none;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 .card-header {
-    background-color: transparent;
-    border-bottom: 1px solid #dadce0;
+    background-color: #ffffff;
+    border-bottom: 1px solid #dee2e6;
 }
 
 /* 2. CALENDAR GLOBAL STYLES */
 #calendar {
-    --fc-border-color: #e0e0e0; /* Lighter borders within the calendar */
-    --fc-today-bg-color: #f1f3f4; /* Subtle background for 'today' */
+    --fc-border-color: #e9ecef;
+    --fc-today-bg-color: rgba(255, 224, 130, 0.15); /* A very subtle yellow for today */
 }
 
-/* 3. LIST VIEW SPECIFIC STYLES */
+/* 3. LIST VIEW - THE CORE REDESIGN */
 
-/* Table header for the list view (e.g., "Tuesday, July 15") */
-.fc-list-day > * {
-    background-color: #f8f9fa; /* Light gray background for the day separator */
-    padding: 8px 12px;
+/* Day Separator (e.g., "Sunday, July 20") */
+.fc .fc-list-day-cushion {
+    background-color: #f8f9fa;
+    padding: 10px 16px;
 }
-.fc-list-day-text {
-    font-weight: 500;
-    color: #3c4043;
-}
-.fc-list-day-side-text {
-    font-weight: 400;
-    color: #70757a;
-}
-
-/* Each event row in the list */
-.fc-list-event {
-    padding: 8px 0;
-    display: flex;
-    align-items: center;
-}
-
-/* The dot/icon for the event */
-.fc-list-event-dot {
-    border: none !important; /* Remove the default border */
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    margin-right: 12px;
-}
-
-/* The time of the event (we don't show time, but this aligns the title) */
-.fc-list-event-time {
-    display: none; /* Hide the "all-day" text for a cleaner look */
-}
-
-/* The title of the event */
-.fc-list-event-title {
-    font-weight: 500;
+.fc-list-day-text, .fc-list-day-side-text {
     font-size: 0.9em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6c757d;
 }
+
+/* Hide the default event dot and time for our custom card layout */
+.fc-list-event-dot, .fc-list-event-time {
+    display: none !important;
+}
+
+/* This is the main event card container */
+.fc-list-event {
+    background-color: #ffffff;
+    margin: 8px 0;
+    padding: 12px 16px;
+    border-radius: 6px;
+    border-left: 5px solid; /* The colored status indicator! */
+    transition: box-shadow 0.2s ease-in-out;
+}
+.fc-list-event:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* The title link within the event card */
 .fc-list-event-title a {
-    color: #3c4043; /* Make event title text dark */
+    color: inherit;
     text-decoration: none;
 }
-.fc-list-event-title a:hover {
-    text-decoration: underline;
-}
 
-/* 4. EVENT COLORING (Applied to the dot) */
-.fc-event.impact-critical .fc-list-event-dot {
-    background-color: #d90429 !important;
+/* The content of the title, which we will structure with HTML */
+.fc-event-title-main {
+    font-size: 1em;
+    font-weight: 600;
+    color: #343a40;
 }
-.fc-event.impact-warning .fc-list-event-dot {
-    background-color: #ffb703 !important;
-}
-.fc-event.impact-covered .fc-list-event-dot {
-    background-color: #2a9d8f !important;
-}
-
-/* 5. BACKGROUND EVENTS (Vacations/Holidays in dayGridMonth view) */
-.fc-daygrid-bg-event {
-    opacity: 0.7;
-    margin: 0 4px;
-}
-.fc-daygrid-bg-event .fc-event-title {
-    color: #212529 !important;
-    font-size: 0.75em;
+.fc-event-status-details {
+    font-size: 0.8em;
     font-weight: 500;
-    padding: 2px 5px;
+    color: #6c757d;
+    margin-left: 12px;
+    padding-left: 12px;
+    border-left: 1px solid #dee2e6;
 }
 
-/* 6. TOOLTIP STYLE */
+/* 4. EVENT CARD COLORING (Applied to the left border) */
+.fc-event.impact-critical {
+    border-left-color: #d90429 !important;
+}
+.fc-event.impact-warning {
+    border-left-color: #ffb703 !important;
+}
+.fc-event.impact-covered {
+    border-left-color: #2a9d8f !important;
+}
+
+/* 5. TOOLTIP STYLE */
 .tooltip-inner {
-    max-width: 350px;
-    padding: 10px;
+    padding: 12px;
     background-color: #212529;
     text-align: left;
-    border-radius: 0.3rem;
+    border-radius: 6px;
+    font-size: 0.9em;
 }
