@@ -175,25 +175,36 @@ function processGenericCsvData(data) {
 function initializeCalendar() {
     const calendarEl = document.getElementById('calendar');
     calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'listFiveDay',
-        views: {
-            listFiveDay: {
-                type: 'list',
-                duration: { days: 5 },
-                buttonText: 'week' // The button in the header will still say "week"
-            }
+        // --- THE CORRECTED CONFIGURATION ---
+        initialView: 'listWeek',
+        weekends: false, // This correctly hides Saturday & Sunday in the list view
+
+        // This controls the format of the day headers (e.g., "Monday, July 21")
+        listDayFormat: {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+            weekday: 'long' // This is the key to bringing back the day name!
         },
-       headerToolbar: {
+
+        // This ensures the button in the header is clear
+        buttonText: {
+            listWeek: 'week' // Rename the button to just "week"
+        },
+        
+        headerToolbar: {
             left: 'prev,next today',
             center: 'title',
-            right: 'listFiveDay,dayGridMonth' // Use 'listFiveDay' here
+            right: 'listWeek,dayGridMonth'
         },
+        // --- END OF CORRECTED CONFIGURATION ---
+
         noEventsContent: 'All customers are fully covered for this period.',
+
         eventContent: function(arg) {
             return { html: arg.event.title };
         },
         eventDidMount: function(info) {
-            // This robust tooltip code prevents "stuck" tooltips
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
             new bootstrap.Tooltip(info.el, {
                 title: info.event.extendedProps.description,
@@ -204,7 +215,7 @@ function initializeCalendar() {
             });
         }
     });
-    // The events property will be set after initialization to ensure data is ready
+    // The events property is set after initialization
     calendar.setOption('events', fetchCalendarEvents);
     calendar.render();
 }
