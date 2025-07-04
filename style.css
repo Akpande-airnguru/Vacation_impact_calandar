@@ -18,12 +18,12 @@ body {
 /* 2. CALENDAR GLOBAL STYLES */
 #calendar {
     --fc-border-color: #e9ecef;
-    --fc-today-bg-color: rgba(255, 224, 130, 0.15); /* A subtle yellow for 'today' */
-    --status-critical: #d90429; /* A strong, clear red */
-    --status-warning: #ffb703; /* A rich gold/amber */
-    --status-covered: #2a9d8f; /* A modern teal/green */
-    --leave-bg-color: #e9ecef; /* A neutral gray for leave events */
-    --leave-text-color: #495057; /* Darker gray text for leave events */
+    --fc-today-bg-color: rgba(255, 224, 130, 0.15);
+    --status-critical: #d90429;
+    --status-warning: #ffb703;
+    --status-covered: #2a9d8f;
+    --leave-bg-color: #e9ecef;
+    --leave-text-color: #495057;
 }
 
 .fc .fc-button-primary {
@@ -35,14 +35,14 @@ body {
     background-color: var(--fc-today-bg-color);
 }
 
-/* 3. MONTH VIEW EVENT STYLES (NEW) */
+/* 3. MONTH VIEW EVENT STYLES (REFINED) */
 
 /* General container for events in daygrid */
 .fc-daygrid-event {
     border-radius: 4px;
     margin-bottom: 3px;
-    padding: 2px 5px;
-    font-size: 0.75em;
+    padding: 2px 6px; /* Increased padding slightly */
+    font-size: 0.8em;  /* Slightly larger font */
     font-weight: 500;
     overflow: hidden;
     white-space: nowrap;
@@ -51,11 +51,16 @@ body {
 
 /* --- Customer Status Event Styling --- */
 .fc-event.impact-event {
-    background-color: #f8f9fa; /* Very light grey, almost white */
-    border: 1px solid #e9ecef;
-    border-left-width: 4px; /* The colored status bar */
-    color: #212529; /* Black text */
+    background-color: #f8f9fa;
+    border: 1px solid #e0e0e0; /* A slightly darker border for definition */
+    border-left-width: 4px;
 }
+/* === THE CRITICAL FIX FOR TEXT VISIBILITY === */
+.fc-daygrid-event.impact-event .fc-event-title {
+    color: #212529 !important; /* Force dark text color */
+    font-weight: 600;           /* Make it bolder */
+}
+/* === END OF CRITICAL FIX === */
 
 .fc-event.impact-critical { border-left-color: var(--status-critical); }
 .fc-event.impact-warning { border-left-color: var(--status-warning); }
@@ -68,12 +73,12 @@ body {
     border: 1px solid var(--leave-bg-color);
 }
 .fc-event.leave-event .fc-event-title::before {
-    content: '●'; /* A small dot for decoration */
+    content: '•';
     margin-right: 4px;
-    opacity: 0.7;
+    opacity: 0.8;
 }
 
-/* 4. "+n more" POPOVER STYLES (NEW) */
+/* 4. "+n more" POPOVER STYLES */
 .fc-popover {
     border: none;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
@@ -88,7 +93,7 @@ body {
     padding: 8px;
 }
 
-/* 5. LIST VIEW STYLES (Existing but polished) */
+/* 5. LIST VIEW STYLES (Polished) */
 .fc .fc-list-day-cushion {
     background-color: #f8f9fa;
     padding: 10px 16px;
@@ -131,14 +136,14 @@ body {
     border-left: 1px solid #dee2e6;
 }
 
-/* Color the title text based on status (used in List View) */
-.fc-event-title-main.impact-critical { color: var(--status-critical); }
-.fc-event-title-main.impact-warning { color: var(--status-warning); }
-.fc-event-title-main.impact-covered { color: var(--status-covered); }
+/* Color the title text based on status (ONLY for List View) */
+.fc-list-event .fc-event-title-main.impact-critical { color: var(--status-critical); }
+.fc-list-event .fc-event-title-main.impact-warning { color: var(--status-warning); }
+.fc-list-event .fc-event-title-main.impact-covered { color: var(--status-covered); }
 
 /* 6. TOOLTIP STYLE */
 .tooltip-inner {
-    max-width: 350px; /* Wider tooltips for more detail */
+    max-width: 350px;
     padding: 12px;
     background-color: #212529;
     text-align: left;
