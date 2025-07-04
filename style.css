@@ -1,88 +1,101 @@
-/* style.css - PROFESSIONAL VISUAL REFRESH */
+/* style.css - GOOGLE CALENDAR INSPIRED REFRESH */
 
 /* 1. GENERAL PAGE & LAYOUT STYLES */
 body {
-    background-color: #f4f7f9; /* A slightly cooler, professional light gray */
+    background-color: #ffffff; /* A clean white background */
+    font-family: 'Roboto', 'Segoe UI', Arial, sans-serif; /* Modern font stack */
+    color: #3c4043; /* Google's standard text color */
 }
 
 .card {
-    border: 1px solid #e9ecef; /* Softer borders for cards */
+    border: 1px solid #dadce0; /* Softer Google-style border */
+    border-radius: 8px; /* Rounded corners */
+}
+.card-header {
+    background-color: transparent;
+    border-bottom: 1px solid #dadce0;
 }
 
-/* 2. CALENDAR HEADER & STRUCTURE */
-
-/* The main calendar container */
+/* 2. CALENDAR GLOBAL STYLES */
 #calendar {
-    background-color: #ffffff; /* White background for the calendar grid */
+    --fc-border-color: #e0e0e0; /* Lighter borders within the calendar */
+    --fc-today-bg-color: #f1f3f4; /* Subtle background for 'today' */
 }
 
-/* Day headers (Sun, Mon, Tue, etc.) */
-.fc .fc-col-header-cell {
-    background-color: #495057; /* Dark gray header background */
-    color: #ffffff;           /* White text */
-    padding: 8px 0;          /* Add some vertical padding */
-    font-weight: 600;
+/* 3. LIST VIEW SPECIFIC STYLES */
+
+/* Table header for the list view (e.g., "Tuesday, July 15") */
+.fc-list-day > * {
+    background-color: #f8f9fa; /* Light gray background for the day separator */
+    padding: 8px 12px;
+}
+.fc-list-day-text {
+    font-weight: 500;
+    color: #3c4043;
+}
+.fc-list-day-side-text {
+    font-weight: 400;
+    color: #70757a;
 }
 
-/* Styling for the day numbers (1, 2, 3...) */
-.fc .fc-daygrid-day-number {
+/* Each event row in the list */
+.fc-list-event {
+    padding: 8px 0;
+    display: flex;
+    align-items: center;
+}
+
+/* The dot/icon for the event */
+.fc-list-event-dot {
+    border: none !important; /* Remove the default border */
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 12px;
+}
+
+/* The time of the event (we don't show time, but this aligns the title) */
+.fc-list-event-time {
+    display: none; /* Hide the "all-day" text for a cleaner look */
+}
+
+/* The title of the event */
+.fc-list-event-title {
+    font-weight: 500;
     font-size: 0.9em;
-    font-weight: 500;
-    color: #6c757d; /* Muted gray for day numbers */
-    padding: 8px;
+}
+.fc-list-event-title a {
+    color: #3c4043; /* Make event title text dark */
+    text-decoration: none;
+}
+.fc-list-event-title a:hover {
+    text-decoration: underline;
 }
 
-/* Differentiate weekend days from weekdays */
-.fc-day-sun, .fc-day-sat {
-    background-color: #f8f9fa; /* Very light gray for weekends */
+/* 4. EVENT COLORING (Applied to the dot) */
+.fc-event.impact-critical .fc-list-event-dot {
+    background-color: #d90429 !important;
+}
+.fc-event.impact-warning .fc-list-event-dot {
+    background-color: #ffb703 !important;
+}
+.fc-event.impact-covered .fc-list-event-dot {
+    background-color: #2a9d8f !important;
 }
 
-/* 3. CORE STATUS EVENT STYLES (Your Red/Yellow/Green blocks) */
-.fc-daygrid-event.fc-event {
-    border: none !important;
-    font-weight: 500;
-    padding: 4px 6px;
-    font-size: 0.8em;
-    border-radius: 4px;
-    color: #fff !important;
-    margin-bottom: 4px; /* Space between events */
-}
-
-.fc-event.impact-critical {
-    background-color: #d90429 !important; /* A strong, primary red */
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Add a subtle shadow */
-}
-
-.fc-event.impact-warning {
-    background-color: #ffb703 !important; /* A vibrant gold/yellow */
-    color: #000 !important;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.fc-event.impact-covered {
-    background-color: #2a9d8f !important; /* A modern teal/green */
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-
-/* 4. BACKGROUND EVENT STYLES (Vacations and Holidays) */
-
-/* Target the container for background events to apply opacity and positioning */
+/* 5. BACKGROUND EVENTS (Vacations/Holidays in dayGridMonth view) */
 .fc-daygrid-bg-event {
-    opacity: 0.7; /* Make the whole event slightly transparent */
-    margin: 0 4px; /* Add some horizontal margin */
+    opacity: 0.7;
+    margin: 0 4px;
 }
-
-/* Style the text inside the background event */
 .fc-daygrid-bg-event .fc-event-title {
-    color: #212529 !important; /* Use a dark color for text */
+    color: #212529 !important;
     font-size: 0.75em;
     font-weight: 500;
     padding: 2px 5px;
 }
 
-
-/* 5. TOOLTIP STYLE */
+/* 6. TOOLTIP STYLE */
 .tooltip-inner {
     max-width: 350px;
     padding: 10px;
