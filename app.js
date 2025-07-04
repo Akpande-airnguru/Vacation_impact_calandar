@@ -192,20 +192,19 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
     for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
         const currentDateStr = day.toISOString().split('T')[0];
         appData.customers.forEach(customer => {
-            let worstStatus = 'covered'; // 'covered', 'warning', or 'critical'
-            const impactDetails = []; // For the detailed tooltip
-            const statusSummary = []; // For the at-a-glance event title
+            let worstStatus = 'covered';
+            const impactDetails = [];
+            const statusSummary = [];
 
             if (!customer.requirements || customer.requirements.length === 0) {
-                // Handle customers with no requirements
-                impactEvents.push({ title: `<span class="fc-event-title-main">${customer.name}</span>`, start: currentDateStr, allDay: true, className: 'impact-covered', description: 'No staffing requirements defined.' });
+                const titleHtml = `<span class="fc-event-title-main impact-covered">${customer.name}</span>`;
+                impactEvents.push({ title: titleHtml, start: currentDateStr, allDay: true, className: 'impact-covered', description: 'No staffing requirements defined.' });
                 return;
             }
 
             customer.requirements.forEach(req => {
                 const requiredTeams = req.teams;
                 const minPerTeam = req.min;
-
                 requiredTeams.forEach(teamName => {
                     const teamStaffPool = appData.employees.filter(e => e.team === teamName);
                     const onLeaveNames = new Set();
@@ -217,7 +216,6 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                         return true;
                     });
                     const availableCount = availableStaff.length;
-
                     let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${minPerTeam}`;
                     if (availableCount < minPerTeam) {
                         worstStatus = 'critical';
@@ -236,21 +234,23 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     }
                 });
             });
-            
-            // --- NEW: Build the rich HTML title ---
-            let titleHtml = `<span class="fc-event-title-main">${customer.name}</span>`;
+
+            // --- THIS IS THE UPDATED PART ---
+            // We add the impact class directly to the title span
+            const statusClass = `impact-${worstStatus}`;
+            let titleHtml = `<span class="fc-event-title-main ${statusClass}">${customer.name}</span>`;
             if (statusSummary.length > 0) {
                 titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
             }
-
             const eventData = {
                 title: titleHtml,
                 start: currentDateStr,
                 allDay: true,
-                className: `impact-${worstStatus}`,
+                className: statusClass, // The border color still uses this
                 description: impactDetails.join('<br>')
             };
             impactEvents.push(eventData);
+            // --- END OF UPDATE ---
         });
     }
     return impactEvents;
