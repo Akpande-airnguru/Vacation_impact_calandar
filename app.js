@@ -48,10 +48,9 @@ function saveDataToLocalStorage() {
 function loadDataFromLocalStorage() {
     const savedData = localStorage.getItem('resourcePlannerData');
     if (savedData) {
-        // Merge saved data with defaults to ensure new properties exist
         const loadedData = JSON.parse(savedData);
         appData = { ...appData, ...loadedData };
-        if (!appData.settings) { // Backwards compatibility for old save data
+        if (!appData.settings) {
             appData.settings = { vacationCalendarId: null, holidayCalendarId: null };
         }
     }
@@ -62,8 +61,6 @@ function setupEventListeners() {
     document.getElementById('download-template-btn').addEventListener('click', downloadCsvTemplate);
     document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
     document.getElementById('signout_button').addEventListener('click', handleSignoutClick);
-    
-    // Listen for changes on the new calendar selectors
     document.getElementById('vacation-calendar-select').addEventListener('change', (e) => {
         appData.settings.vacationCalendarId = e.target.value;
         saveDataToLocalStorage();
@@ -76,14 +73,12 @@ function setupEventListeners() {
     });
 }
 
-// ... (renderManagementTables, downloadCsvTemplate, handleCsvImport, parseGenericFields, processGenericCsvData functions remain the same as the previous "Rule-Based Engine" version) ...
 function renderManagementTables() {
     const customerList = appData.customers.map(c => {
         const reqs = c.requirements.map(r => `${r.teams.join(', ')}: ${r.min} required`).join('<br>');
         return `<li><strong>${c.name} (${c.country})</strong><br><small>${reqs}</small></li>`;
     }).join('');
     const employeeList = appData.employees.map(e => `<li>${e.name} (${e.country}) - Team: ${e.team}</li>`).join('');
-
     const dataFormsDiv = document.getElementById('data-input-forms');
     dataFormsDiv.innerHTML = `<div class="card border-0"><div class="card-body p-0">
         <h6>Current Customers:</h6><ul class="list-unstyled">${customerList || '<li>None loaded</li>'}</ul>
@@ -91,9 +86,13 @@ function renderManagementTables() {
     </div></div>`;
 }
 
+// =================================================================================
+// 3. GENERIC CSV IMPORT & EXPORT
+// =================================================================================
+
 function downloadCsvTemplate(event) {
     event.preventDefault();
-    const csvContent = [ "type,name,country,field_1_condition,field_1_value,field_2_condition,field_2_value", "customer,Heron,AUH,required_team,\"product,fenix,rudras\",required_employee_per_team,1", "customer,Hawk,QAR,required_team,\"product,fenix,rudras\",required_employee_per_team,2", "employee,Akshay,IND,team,product", "employee,Bob,AUH,team,fenix", "employee,Carol,QAR,team,rudras" ].join("\n");
+    const csvContent = ["type,name,country,field_1_condition,field_1_value,field_2_condition,field_2_value", "customer,Heron,AUH,required_team,\"product,fenix,rudras\",required_employee_per_team,1", "customer,Hawk,QAR,required_team,\"product,fenix,rudras\",required_employee_per_team,2", "employee,Akshay,IND,team,product", "employee,Bob,AUH,team,fenix", "employee,Carol,QAR,team,rudras"].join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.setAttribute("href", URL.createObjectURL(blob));
@@ -104,32 +103,47 @@ function downloadCsvTemplate(event) {
 function handleCsvImport(event) {
     const file = event.target.files[0];
     if (file) {
-        Papa.parse(file, { header: true, skipEmptyLines: true, complete: (results) => { processGenericCsvData(results.data); saveDataToLocalStorage(); alert('Data imported successfully! The page will now reload.'); location.reload(); }, error: (err) => alert(`CSV Parsing Error: ${err.message}`) });
+        Papa.parse(file, {
+            header: true, skipEmptyLines: true,
+            complete: (results) => { processGenericCsvData(results.data); saveDataToLocalStorage(); alert('Data imported successfully! The page will now reload.'); location.reload(); },
+            error: (err) => alert(`CSV Parsing Error: ${err.message}`)
+        });
     }
 }
 
 function parseGenericFields(row) {
     const fields = {};
-    for (let i = 1; i <= 4; i++) { const condition = row[`field_${i}_condition`]; const value = row[`field_${i}_value`]; if (condition) { fields[condition] = value; } }
+    for (let i = 1; i <= 4; i++) {
+        const condition = row[`field_${i}_condition`];
+        const value = row[`field_${i}_value`];
+        if (condition) { fields[condition] = value; }
+    }
     return fields;
 }
 
+// CORRECTED VERSION of this function
 function processGenericCsvData(data) {
     appData = { customers: [], employees: [] };
     const generateId = () => Date.now() + Math.random();
     data.forEach(row => {
         const type = row.type?.toLowerCase().trim();
         const fields = parseGenericFields(row);
-        if (type === 'employee') { appData.employees.push({ id: generateId(), name: row.name, country: row.country, team: fields.team });
-        } else if (type === 'customer') {
+        if (type === 'employee') {
+            appData.employees.push({ id: generateId(), name: row.name, country: row.country, team: fields.team });
+        } // <--- THIS BRACE WAS MISSING
+        else if (type === 'customer') {
             const requirement = { teams: fields.required_team.split(',').map(t => t.trim()), min: parseInt(fields.required_employee_per_team, 10) };
             let customer = appData.customers.find(c => c.name === row.name);
-            if (!customer) { customer = { id: generateId(), name: row.name, country: row.country, requirements: [] }; appData.customers.push(customer); }
+            if (!customer) {
+                customer = { id: generateId(), name: row.name, country: row.country, requirements: [] };
+                appData.customers.push(customer);
+            }
             customer.requirements.push(requirement);
         }
     });
     console.log("Processed Generic App Data:", appData);
 }
+
 
 // =================================================================================
 // 4. CALENDAR DISPLAY & LOGIC
@@ -146,10 +160,7 @@ function initializeCalendar() {
     calendar.render();
 }
 
-// REWRITTEN: Logic for holidays is now based on selected Holiday calendar, not employee country
 function generateImpactEvents(fetchInfo, leaveEvents = []) {
-    // ... (This function is largely the same as the previous version, BUT we simplify the holiday logic) ...
-    // The key change is that a holiday from the selected calendar affects ALL employees.
     const impactEvents = [];
     const { start, end } = fetchInfo;
     for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
@@ -170,15 +181,24 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     return true;
                 });
                 const availableCount = availableStaffPool.length;
-                if (availableCount < min) { isUnderstaffed = true; impactDetails.push(`<b>${teams.join('/')}:</b> ${availableCount}/${min} <strong class="text-danger">(Critical)</strong>`);
-                } else if (availableCount === min) { isAtRisk = true; impactDetails.push(`<b>${teams.join('/')}:</b> ${availableCount}/${min} <strong class="text-warning">(Warning)</strong>`);
-                } else { impactDetails.push(`<b>${teams.join('/')}:</b> ${availableCount}/${min} (OK)`); }
+                if (availableCount < min) {
+                    isUnderstaffed = true;
+                    impactDetails.push(`<b>${teams.join('/')}:</b> ${availableCount}/${min} <strong class="text-danger">(Critical)</strong>`);
+                } else if (availableCount === min) {
+                    isAtRisk = true;
+                    impactDetails.push(`<b>${teams.join('/')}:</b> ${availableCount}/${min} <strong class="text-warning">(Warning)</strong>`);
+                } else {
+                    impactDetails.push(`<b>${teams.join('/')}:</b> ${availableCount}/${min} (OK)`);
+                }
                 if (onLeaveNames.size > 0) { impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); }
             });
             if (isUnderstaffed || isAtRisk) {
                 const description = impactDetails.join('<br>');
-                if (isUnderstaffed) { impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-critical', description });
-                } else { impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-warning', description }); }
+                if (isUnderstaffed) {
+                    impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-critical', description });
+                } else {
+                    impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-warning', description });
+                }
             }
         });
     }
@@ -187,7 +207,7 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
 
 
 // =================================================================================
-// 5. GOOGLE CALENDAR API INTEGRATION (Major Rewrite)
+// 5. GOOGLE CALENDAR API INTEGRATION
 // =================================================================================
 
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
@@ -201,97 +221,58 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
     }
 }
 
-// REWRITTEN to use selected calendar IDs
 async function fetchGoogleCalendarData(fetchInfo) {
     const { vacationCalendarId, holidayCalendarId } = appData.settings;
-    if (gapi.client.getToken() === null || (!vacationCalendarId && !holidayCalendarId)) {
-        return []; // Not signed in or no calendars selected
-    }
-
+    if (gapi.client.getToken() === null || (!vacationCalendarId && !holidayCalendarId)) { return []; }
     const { startStr, endStr } = fetchInfo;
     const promises = [];
-
-    // Add promise for vacation calendar if selected
     if (vacationCalendarId) {
-        promises.push(
-            gapi.client.calendar.events.list({ calendarId: vacationCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
-            .then(response => ({ response, type: 'vacation' }))
-        );
+        promises.push(gapi.client.calendar.events.list({ calendarId: vacationCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'vacation' })));
     }
-    // Add promise for holiday calendar if selected
     if (holidayCalendarId) {
-        promises.push(
-            gapi.client.calendar.events.list({ calendarId: holidayCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
-            .then(response => ({ response, type: 'holiday' }))
-        );
+        promises.push(gapi.client.calendar.events.list({ calendarId: holidayCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'holiday' })));
     }
-
     const results = await Promise.allSettled(promises);
     let allEvents = [];
-    
     results.forEach(result => {
         if (result.status === 'fulfilled') {
             const { response, type } = result.value;
             const events = response.result.items || [];
             const isHoliday = type === 'holiday';
-
             const mappedEvents = events.map(event => ({
-                title: event.summary, // Simpler title
-                start: event.start.date || event.start.dateTime,
-                end: event.end.date || event.end.dateTime,
-                allDay: !!event.start.date,
-                display: 'background',
-                className: 'google-event',
-                extendedProps: {
-                    employeeName: isHoliday ? null : (event.summary.split(':')[1]?.trim() || event.summary),
-                    isHoliday: isHoliday,
-                    description: event.summary
-                }
+                title: event.summary, start: event.start.date || event.start.dateTime, end: event.end.date || event.end.dateTime,
+                allDay: !!event.start.date, display: 'background', className: 'google-event',
+                extendedProps: { employeeName: isHoliday ? null : (event.summary.split(':')[1]?.trim() || event.summary), isHoliday: isHoliday, description: event.summary }
             }));
             allEvents = allEvents.concat(mappedEvents);
-        } else {
-            console.error("Failed to fetch calendar:", result.reason);
-        }
+        } else { console.error("Failed to fetch calendar:", result.reason); }
     });
     return allEvents;
 }
 
-// NEW function to populate the calendar selection dropdowns
 async function populateCalendarSelectors() {
     try {
         const response = await gapi.client.calendar.calendarList.list();
         const calendars = response.result.items;
         const vacationSelect = document.getElementById('vacation-calendar-select');
         const holidaySelect = document.getElementById('holiday-calendar-select');
-
-        // Clear existing options except the first one
         vacationSelect.innerHTML = '<option value="">-- Select a calendar --</option>';
         holidaySelect.innerHTML = '<option value="">-- Select a calendar --</option>';
-
         calendars.forEach(cal => {
             const option = new Option(cal.summary, cal.id);
             vacationSelect.add(option.cloneNode(true));
             holidaySelect.add(option);
         });
-        
-        // Pre-select saved values
-        if (appData.settings.vacationCalendarId) {
-            vacationSelect.value = appData.settings.vacationCalendarId;
-        }
-        if (appData.settings.holidayCalendarId) {
-            holidaySelect.value = appData.settings.holidayCalendarId;
-        }
-
+        if (appData.settings.vacationCalendarId) { vacationSelect.value = appData.settings.vacationCalendarId; }
+        if (appData.settings.holidayCalendarId) { holidaySelect.value = appData.settings.holidayCalendarId; }
         document.getElementById('calendar-selection-ui').style.display = 'block';
-
     } catch (error) {
         console.error("Could not fetch user's calendar list:", error);
         alert("Could not load your calendar list. Please try refreshing or re-connecting.");
     }
 }
 
-
-// All Google Auth functions (gisLoaded, handleAuthClick, etc.) are modified to call populateCalendarSelectors
+// All Google Auth functions
 window.gisLoaded = function() {
     tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '', });
     gisInited = true;
@@ -302,10 +283,7 @@ async function initializeGapiClient() {
         await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS });
         gapiInited = true;
         maybeEnableButtons();
-        // If user is already signed in on load, populate selectors
-        if (gapi.client.getToken()) {
-            populateCalendarSelectors();
-        }
+        if (gapi.client.getToken()) { populateCalendarSelectors(); }
     } catch (e) { console.error("Error initializing GAPI client:", e); }
 }
 function maybeEnableButtons() {
@@ -316,7 +294,7 @@ function handleAuthClick() {
         if (resp.error) throw (resp);
         document.getElementById('signout_button').style.display = 'block';
         document.getElementById('authorize_button').innerText = 'Refresh Connection';
-        await populateCalendarSelectors(); // Populate after successful login
+        await populateCalendarSelectors();
         calendar.refetchEvents();
     };
     if (gapi.client.getToken() === null) { tokenClient.requestAccessToken({ prompt: 'consent' }); }
@@ -329,15 +307,10 @@ function handleSignoutClick() {
         gapi.client.setToken('');
         document.getElementById('signout_button').style.display = 'none';
         document.getElementById('authorize_button').innerText = 'Connect Google Calendar';
-        document.getElementById('calendar-selection-ui').style.display = 'none'; // Hide selectors
-        // Clear saved settings and refetch
+        document.getElementById('calendar-selection-ui').style.display = 'none';
         appData.settings.vacationCalendarId = null;
         appData.settings.holidayCalendarId = null;
         saveDataToLocalStorage();
-        calendar.refetchEvents();
-    }
-}
-        document.getElementById('authorize_button').innerText = 'Connect Google Calendar';
         calendar.refetchEvents();
     }
 }
