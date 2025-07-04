@@ -1,4 +1,4 @@
-/* style.css - PROFESSIONAL DASHBOARD REFRESH */
+/* style.css - FINAL POLISHED VERSION */
 
 /* 1. GENERAL PAGE & LAYOUT STYLES */
 body {
@@ -6,7 +6,6 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: #212529;
 }
-
 .card {
     border: none;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
@@ -19,12 +18,10 @@ body {
 /* 2. CALENDAR GLOBAL STYLES */
 #calendar {
     --fc-border-color: #e9ecef;
-    --fc-today-bg-color: rgba(255, 224, 130, 0.15); /* A very subtle yellow for today */
+    --fc-today-bg-color: rgba(255, 224, 130, 0.15);
 }
 
-/* 3. LIST VIEW - THE CORE REDESIGN */
-
-/* Day Separator (e.g., "Sunday, July 20") */
+/* 3. LIST VIEW STYLES */
 .fc .fc-list-day-cushion {
     background-color: #f8f9fa;
     padding: 10px 16px;
@@ -36,36 +33,29 @@ body {
     letter-spacing: 0.5px;
     color: #6c757d;
 }
-
-/* Hide the default event dot and time for our custom card layout */
 .fc-list-event-dot, .fc-list-event-time {
     display: none !important;
 }
-
-/* This is the main event card container */
 .fc-list-event {
     background-color: #ffffff;
     margin: 8px 0;
     padding: 12px 16px;
     border-radius: 6px;
-    border-left: 5px solid; /* The colored status indicator! */
     transition: box-shadow 0.2s ease-in-out;
+    border: 1px solid #e9ecef; /* Add a subtle border to the card */
 }
 .fc-list-event:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
-
-/* The title link within the event card */
 .fc-list-event-title a {
     color: inherit;
     text-decoration: none;
 }
 
-/* The content of the title, which we will structure with HTML */
+/* 4. EVENT TITLE AND STATUS STYLES */
 .fc-event-title-main {
     font-size: 1em;
     font-weight: 600;
-    color: #343a40;
 }
 .fc-event-status-details {
     font-size: 0.8em;
@@ -76,16 +66,18 @@ body {
     border-left: 1px solid #dee2e6;
 }
 
-/* 4. EVENT CARD COLORING (Applied to the left border) */
-.fc-event.impact-critical {
-    border-left-color: #d90429 !important;
+/* --- THIS IS THE NEW PART THAT COLORS THE NAME --- */
+.fc-event-title-main.impact-critical {
+    color: #d90429 !important; /* Critical Red */
 }
-.fc-event.impact-warning {
-    border-left-color: #ffb703 !important;
+.fc-event-title-main.impact-warning {
+    color: #ffb703 !important; /* Warning Gold */
 }
-.fc-event.impact-covered {
-    border-left-color: #2a9d8f !important;
+.fc-event-title-main.impact-covered {
+    color: #2a9d8f !important; /* Covered Teal */
 }
+/* --- END OF NEW PART --- */
+
 
 /* 5. TOOLTIP STYLE */
 .tooltip-inner {
