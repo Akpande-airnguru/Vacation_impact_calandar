@@ -345,9 +345,20 @@ async function fetchGoogleCalendarData(fetchInfo) {
  * Add more mappings as needed.
  */
 function mapCountryCode(code) {
-    const map = {
-        'usa': 'usa', 'pol': 'polish', 'auh': 'ae', // AUH -> United Arab Emirates
-        'qar': 'qatari', 'bru': 'belgian', 'spa': 'spain'
+     const map = {
+        // Your Original Codes
+        'usa': 'usa',
+        'pol': 'polish',
+        'auh': 'ae',     // United Arab Emirates
+        'qar': 'qa.qatari', // CORRECT ID FOR QATAR
+        'bru': 'be.belgian', // CORRECT ID FOR BELGIUM (BRU is Brussels)
+        'spa': 'spain',
+
+        // Common additions
+        'gbr': 'uk', // United Kingdom
+        'deu': 'german',
+        'fra': 'french',
+        'ind': 'indian'
     };
     return map[code];
 }
