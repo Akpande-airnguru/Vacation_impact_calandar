@@ -1,0 +1,8 @@
+/resource-planner-app/
+├── index.html          // The main page structure
+├── style.css           // Your custom styles
+├── app.js              // All your application logic
+│
+└── /lib/                 // Folder for third-party libraries
+    ├── fullcalendar/     // Download FullCalendar files here
+    └── papaparse.min.js  // Download Papa Parse here
