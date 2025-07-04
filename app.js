@@ -175,33 +175,30 @@ function processGenericCsvData(data) {
 function initializeCalendar() {
     const calendarEl = document.getElementById('calendar');
     calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'dayGridMonth', // Default to month view now
+        initialView: 'dayGridMonth',
         headerToolbar: {
             left: 'prev,next today',
             center: 'title',
-            right: 'dayGridMonth,listWeek' // Keep both views available
+            right: 'dayGridMonth,listWeek'
         },
-        dayMaxEvents: true, // THIS IS THE KEY: limits events per day and adds a "+n more" link
-        
-        // --- NEW eventContent RENDERER ---
-        // This function customizes the HTML for each event, making the different types look distinct.
+        dayMaxEvents: true, // Crucial for preventing overlap
+
         eventContent: function(arg) {
             let htmlContent = '';
-            // Check if it's a leave event (vacation/holiday)
+            
+            // Handle Holiday/Vacation Events
             if (arg.event.extendedProps.type) {
-                 htmlContent = `
-                    <div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>
-                `;
-            } 
-            // Otherwise, it's a customer impact event
+                htmlContent = `<div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>`;
+            }
+            // Handle Customer Impact Events
             else {
-                // In month view, we only show the customer name for brevity.
-                // The status is shown by the colored border.
                 if (arg.view.type === 'dayGridMonth') {
-                    const mainTitle = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
-                    htmlContent = `<div class="fc-event-title">${mainTitle ? mainTitle[1] : ''}</div>`;
+                    // In month view, just show the customer name. The color bar indicates status.
+                    const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
+                    const customerName = mainTitleMatch ? mainTitleMatch[1] : 'Event';
+                    htmlContent = `<div class="fc-event-title">${customerName}</div>`;
                 } else {
-                    // For list view, use the original rich HTML
+                    // In list view, use the original rich HTML with status details.
                     htmlContent = arg.event.title;
                 }
             }
@@ -209,8 +206,11 @@ function initializeCalendar() {
         },
 
         eventDidMount: function(info) {
-            // Re-initialize tooltips
+            // Remove any lingering tooltips to prevent duplicates
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
+            
+            // Only attach tooltips to events that have a description to show.
+            // This smartly adds them to holidays and detailed impact events.
             if (info.event.extendedProps.description) {
                 new bootstrap.Tooltip(info.el, {
                     title: info.event.extendedProps.description,
@@ -222,7 +222,7 @@ function initializeCalendar() {
             }
         },
         
-        // --- Rest of your existing list view config ---
+        // Configuration for the list view
         listDayFormat: {
             month: 'long', day: 'numeric', year: 'numeric', weekday: 'long'
         },
