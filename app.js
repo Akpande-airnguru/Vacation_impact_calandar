@@ -177,7 +177,7 @@ function initializeCalendar() {
     calendar = new FullCalendar.Calendar(calendarEl, {
         // --- THE CORRECTED CONFIGURATION ---
         initialView: 'listWeek',
-        weekends: false, // This correctly hides Saturday & Sunday in the list view
+        // weekends: false, // THIS LINE IS THE BUG. IT HIDES HOLIDAYS AS WELL.
 
         // This controls the format of the day headers (e.g., "Monday, July 21")
         listDayFormat: {
