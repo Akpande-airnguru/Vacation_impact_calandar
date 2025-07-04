@@ -175,16 +175,25 @@ function processGenericCsvData(data) {
 function initializeCalendar() {
     const calendarEl = document.getElementById('calendar');
     calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'listWeek',
-        weekends: false,
-        headerToolbar: {
+        initialView: 'listFiveDay',
+        views: {
+            listFiveDay: {
+                type: 'list',
+                duration: { days: 5 },
+                buttonText: 'week' // The button in the header will still say "week"
+            }
+        },
+       headerToolbar: {
             left: 'prev,next today',
             center: 'title',
-            right: 'listWeek,dayGridMonth'
+            right: 'listFiveDay,dayGridMonth' // Use 'listFiveDay' here
         },
         noEventsContent: 'All customers are fully covered for this period.',
-        eventContent: function(arg) { return { html: arg.event.title }; },
+        eventContent: function(arg) {
+            return { html: arg.event.title };
+        },
         eventDidMount: function(info) {
+            // This robust tooltip code prevents "stuck" tooltips
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
             new bootstrap.Tooltip(info.el, {
                 title: info.event.extendedProps.description,
@@ -193,9 +202,10 @@ function initializeCalendar() {
                 container: 'body',
                 html: true
             });
-        },
-        events: fetchCalendarEvents // This now correctly points to the events function
+        }
     });
+    // The events property will be set after initialization to ensure data is ready
+    calendar.setOption('events', fetchCalendarEvents);
     calendar.render();
 }
 
