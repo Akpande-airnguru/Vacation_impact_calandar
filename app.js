@@ -160,13 +160,21 @@ function initializeCalendar() {
     const calendarEl = document.getElementById('calendar');
     calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'listWeek',
-         headerToolbar: {
+        headerToolbar: {
             left: 'prev,next today',
             center: 'title',
-            right: 'listWeek,dayGridMonth' // listWeek is now the default
+            right: 'listWeek,dayGridMonth'
         },
-        noEventsContent: 'No impacted customers for this period.',
+        noEventsContent: 'All customers are fully covered for this period.',
         events: fetchCalendarEvents,
+
+        // --- NEW and IMPORTANT ---
+        // This hook tells FullCalendar to render the event.title as HTML
+        eventContent: function(arg) {
+            return { html: arg.event.title };
+        },
+        // --- END OF NEW PART ---
+
         eventDidMount: (info) => new bootstrap.Tooltip(info.el, {
             title: info.event.extendedProps.description,
             placement: 'top',
@@ -181,82 +189,72 @@ function initializeCalendar() {
 function generateImpactEvents(fetchInfo, leaveEvents = []) {
     const impactEvents = [];
     const { start, end } = fetchInfo;
-
     for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
         const currentDateStr = day.toISOString().split('T')[0];
-
         appData.customers.forEach(customer => {
-            let isUnderstaffed = false;
-            let isAtRisk = false;
-            const impactDetails = [];
-            
-            // If no requirements, customer is always covered.
+            let worstStatus = 'covered'; // 'covered', 'warning', or 'critical'
+            const impactDetails = []; // For the detailed tooltip
+            const statusSummary = []; // For the at-a-glance event title
+
             if (!customer.requirements || customer.requirements.length === 0) {
-                impactEvents.push({
-                    title: customer.name, start: currentDateStr, allDay: true,
-                    className: 'impact-covered', description: 'No staffing requirements defined.'
-                });
-                return; // Skips to the next customer in the forEach loop
+                // Handle customers with no requirements
+                impactEvents.push({ title: `<span class="fc-event-title-main">${customer.name}</span>`, start: currentDateStr, allDay: true, className: 'impact-covered', description: 'No staffing requirements defined.' });
+                return;
             }
 
-            // Loop through each requirement rule (e.g., "1 person from product,fenix,rudras")
             customer.requirements.forEach(req => {
-                const requiredTeams = req.teams; // e.g., ['product', 'fenix', 'rudras']
-                const minPerTeam = req.min;   // e.g., 1
+                const requiredTeams = req.teams;
+                const minPerTeam = req.min;
 
-                // --- THIS IS THE NEW CORE LOGIC ---
-                // Now, check EACH of the required teams individually.
                 requiredTeams.forEach(teamName => {
-                    // 1. Find all employees who are in this specific team.
                     const teamStaffPool = appData.employees.filter(e => e.team === teamName);
-                    const totalInTeam = teamStaffPool.length;
-
-                    // 2. Determine who from that team is on leave today.
                     const onLeaveNames = new Set();
                     const availableStaff = teamStaffPool.filter(emp => {
                         const onVacation = leaveEvents.some(leave => !leave.extendedProps.isHoliday && leave.extendedProps.employeeName.includes(emp.name) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
                         if (onVacation) { onLeaveNames.add(`${emp.name} (Vacation)`); return false; }
-                        
                         const onPublicHoliday = leaveEvents.some(leave => leave.extendedProps.isHoliday && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
                         if (onPublicHoliday) { onLeaveNames.add(`${emp.name} (Holiday)`); return false; }
-                        
                         return true;
                     });
-
                     const availableCount = availableStaff.length;
 
-                    // 3. Compare available staff to the minimum required *per team*.
+                    let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${minPerTeam}`;
                     if (availableCount < minPerTeam) {
-                        isUnderstaffed = true;
-                        impactDetails.push(`<b>Team ${teamName}:</b> ${availableCount}/${minPerTeam} <strong class="text-danger">(Critical)</strong>`);
+                        worstStatus = 'critical';
+                        teamDetail += ` <strong class="text-danger">(Critical)</strong>`;
+                        statusSummary.push(`${teamName}: ${availableCount}/${minPerTeam}`);
                     } else if (availableCount === minPerTeam) {
-                        isAtRisk = true;
-                        impactDetails.push(`<b>Team ${teamName}:</b> ${availableCount}/${minPerTeam} <strong class="text-warning">(Warning)</strong>`);
+                        if (worstStatus !== 'critical') worstStatus = 'warning';
+                        teamDetail += ` <strong class="text-warning">(Warning)</strong>`;
+                        statusSummary.push(`${teamName}: ${availableCount}/${minPerTeam}`);
                     } else {
-                        impactDetails.push(`<b>Team ${teamName}:</b> ${availableCount}/${minPerTeam} (OK)`);
+                        teamDetail += ` (OK)`;
                     }
-
+                    impactDetails.push(teamDetail);
                     if (onLeaveNames.size > 0) {
                         impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`);
                     }
                 });
-                // --- END OF NEW CORE LOGIC ---
             });
-
-            // Create a single, summarized event for the customer for that day based on the worst status found.
-            const description = impactDetails.join('<br>');
-            if (isUnderstaffed) {
-                impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-critical', description });
-            } else if (isAtRisk) {
-                impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-warning', description });
-            } else {
-                impactEvents.push({ title: customer.name, start: currentDateStr, allDay: true, className: 'impact-covered', description });
+            
+            // --- NEW: Build the rich HTML title ---
+            let titleHtml = `<span class="fc-event-title-main">${customer.name}</span>`;
+            if (statusSummary.length > 0) {
+                titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
             }
+
+            const eventData = {
+                title: titleHtml,
+                start: currentDateStr,
+                allDay: true,
+                className: `impact-${worstStatus}`,
+                description: impactDetails.join('<br>')
+            };
+            impactEvents.push(eventData);
         });
     }
     return impactEvents;
 }
-
 // =================================================================================
 // 5. GOOGLE CALENDAR API INTEGRATION
 // =================================================================================
