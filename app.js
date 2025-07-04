@@ -269,7 +269,9 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
 
             const statusClass = `impact-${worstStatus}`;
             let titleHtml = `<span class="fc-event-title-main ${statusClass}">${customer.name}</span>`;
-            if (worstStatus !== 'covered' && statusSummary.length > 0) { titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`; }
+            if (statusSummary.length > 0) {
+                titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
+            }
             const eventData = { title: titleHtml, start: currentDateStr, allDay: true, className: statusClass, description: impactDetails.length > 0 ? impactDetails.join('<br>') : "All teams are fully covered." };
             impactEvents.push(eventData);
         });
