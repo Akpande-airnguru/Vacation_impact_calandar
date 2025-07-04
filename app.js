@@ -38,7 +38,7 @@ function initializeApp() {
 
 
 // =================================================================================
-// 2. DATA PERSISTENCE & UI (renderManagementTables updated)
+// 2. DATA PERSISTENCE & UI (Largely Unchanged)
 // =================================================================================
 
 function saveDataToLocalStorage() {
@@ -61,61 +61,39 @@ function setupEventListeners() {
     document.getElementById('signout_button').addEventListener('click', handleSignoutClick);
 }
 
-// UPDATED to show assigned employees
 function renderManagementTables() {
     const customerList = appData.customers.map(c => {
-        const reqs = c.requirements.map(r => `${r.team}: ${r.min}`).join(', ');
-        const assignedEmps = appData.assignments
-            .filter(a => a.customerId === c.id)
-            .map(a => appData.employees.find(e => e.id === a.employeeId)?.name)
-            .filter(Boolean)
-            .join(', ');
-        
-        return `<li>
-                    <strong>${c.name} (${c.country})</strong><br>
-                    <small>Req: ${reqs || 'None'}</small><br>
-                    <small>Assigned: ${assignedEmps || 'None'}</small>
-                </li>`;
+        const reqs = c.requirements.map(r => `${r.teams.join(', ')}: ${r.min} required`).join('<br>');
+        return `<li><strong>${c.name} (${c.country})</strong><br><small>${reqs}</small></li>`;
     }).join('');
-    
+    const employeeList = appData.employees.map(e => `<li>${e.name} (${e.country}) - Team: ${e.team}</li>`).join('');
+
     const dataFormsDiv = document.getElementById('data-input-forms');
-    let listDiv = dataFormsDiv.querySelector('.customer-list');
-    if (!listDiv) {
-        listDiv = document.createElement('div');
-        listDiv.className = 'customer-list mt-3';
-        dataFormsDiv.innerHTML = `<div class="card border-0"><div class="card-body p-0"><h6>Current Setup:</h6><ul class="list-unstyled">${customerList || '<li>None loaded</li>'}</ul></div></div>`;
-        dataFormsDiv.appendChild(listDiv);
-    } else {
-        listDiv.querySelector('ul').innerHTML = customerList || '<li>None loaded</li>';
-    }
+    dataFormsDiv.innerHTML = `<div class="card border-0"><div class="card-body p-0">
+        <h6>Current Customers:</h6><ul class="list-unstyled">${customerList || '<li>None loaded</li>'}</ul>
+        <h6 class="mt-3">Current Employees:</h6><ul class="list-unstyled">${employeeList || '<li>None loaded</li>'}</ul>
+    </div></div>`;
 }
 
 // =================================================================================
-// 3. BULK CSV IMPORT & EXPORT (Updated for New Format)
+// 3. GENERIC CSV IMPORT & EXPORT
 // =================================================================================
 
-// UPDATED to new template format
+// UPDATED to new generic template format
 function downloadCsvTemplate(event) {
     event.preventDefault();
-
     const csvContent = [
-        "type,name,detail1,detail2,detail3",
-        "customer,Heron,AUH,1,Support Team",
-        "customer,Heron,AUH,2,Dev Team",
-        "customer,Hawk,QAR,3,Support Team",
-        "employee,Akshay,Support Team,,",
-        "employee,Bob,Dev Team,,",
-        "employee,Carol,Dev Team,,",
-        "assignment,Akshay,Heron,,",
-        "assignment,Bob,Heron,,",
-        "assignment,Carol,Heron,,",
-        "assignment,Akshay,Hawk,,"
+        "type,name,country,field_1_condition,field_1_value,field_2_condition,field_2_value,field_3_condition,field_3_value",
+        "customer,Heron,AUH,required_team,\"product,fenix,rudras\",required_employee_per_team,1,,",
+        "customer,Hawk,QAR,required_team,\"product,fenix,rudras\",required_employee_per_team,2,,",
+        "employee,Akshay,IND,team,product,,,,",
+        "employee,Bob,AUH,team,fenix,,,,",
+        "employee,Carol,QAR,team,rudras,,,,"
     ].join("\n");
-
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.setAttribute("href", URL.createObjectURL(blob));
-    link.setAttribute("download", "final_import_template.csv");
+    link.setAttribute("download", "generic_rules_template.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -128,7 +106,7 @@ function handleCsvImport(event) {
             header: true,
             skipEmptyLines: true,
             complete: (results) => {
-                processAccurateCsvData(results.data);
+                processGenericCsvData(results.data);
                 saveDataToLocalStorage();
                 alert('Data imported successfully! The page will now reload.');
                 location.reload();
@@ -138,44 +116,58 @@ function handleCsvImport(event) {
     }
 }
 
-// REWRITTEN to handle assignments
-function processAccurateCsvData(data) {
-    appData = { customers: [], employees: [], assignments: [] };
+/**
+ * Parses the generic field_X_condition/value pairs from a CSV row.
+ * @param {object} row - A row object from PapaParse.
+ * @returns {object} A simplified object like { team: 'product', ... }
+ */
+function parseGenericFields(row) {
+    const fields = {};
+    for (let i = 1; i <= 4; i++) { // Check up to 4 field pairs
+        const condition = row[`field_${i}_condition`];
+        const value = row[`field_${i}_value`];
+        if (condition) {
+            fields[condition] = value;
+        }
+    }
+    return fields;
+}
+
+// REWRITTEN to handle the generic format
+function processGenericCsvData(data) {
+    appData = { customers: [], employees: [] };
     const generateId = () => Date.now() + Math.random();
 
-    // First pass: create all employees and customers
     data.forEach(row => {
         const type = row.type?.toLowerCase().trim();
-        if (type === 'employee') {
-            if (!appData.employees.some(e => e.name === row.name)) {
-                appData.employees.push({ id: generateId(), name: row.name, team: row.detail1 });
-            }
-        } else if (type === 'customer') {
-            if (!appData.customers.some(c => c.name === row.name)) {
-                appData.customers.push({ id: generateId(), name: row.name, country: row.detail1, requirements: [] });
-            }
-            // Add requirement to the customer
-            const customer = appData.customers.find(c => c.name === row.name);
-            customer.requirements.push({ team: row.detail3, min: parseInt(row.detail2, 10) });
-        }
-    });
+        const fields = parseGenericFields(row);
 
-    // Second pass: create assignments
-    data.forEach(row => {
-        const type = row.type?.toLowerCase().trim();
-        if (type === 'assignment') {
-            const employee = appData.employees.find(e => e.name === row.name);
-            const customer = appData.customers.find(c => c.name === row.detail1);
-            if (employee && customer) {
-                appData.assignments.push({ employeeId: employee.id, customerId: customer.id });
+        if (type === 'employee') {
+            appData.employees.push({
+                id: generateId(),
+                name: row.name,
+                country: row.country,
+                team: fields.team
+            });
+        } else if (type === 'customer') {
+            const requirement = {
+                teams: fields.required_team.split(',').map(t => t.trim()),
+                min: parseInt(fields.required_employee_per_team, 10)
+            };
+            
+            let customer = appData.customers.find(c => c.name === row.name);
+            if (!customer) {
+                customer = { id: generateId(), name: row.name, country: row.country, requirements: [] };
+                appData.customers.push(customer);
             }
+            customer.requirements.push(requirement);
         }
     });
-    console.log("Processed Accurate App Data:", appData);
+    console.log("Processed Generic App Data:", appData);
 }
 
 // =================================================================================
-// 4. CALENDAR DISPLAY & CORE LOGIC (Rewritten Engine)
+// 4. CALENDAR DISPLAY & RULE-BASED LOGIC ENGINE
 // =================================================================================
 
 function initializeCalendar() {
@@ -189,7 +181,7 @@ function initializeCalendar() {
     calendar.render();
 }
 
-// REWRITTEN with accurate logic
+// REWRITTEN with accurate rule-based logic
 function generateImpactEvents(fetchInfo, leaveEvents = []) {
     const impactEvents = [];
     const { start, end } = fetchInfo;
@@ -201,64 +193,55 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
             let isUnderstaffed = false;
             let isAtRisk = false;
             const impactDetails = [];
-            
-            // Is today a public holiday in the customer's country?
-            const publicHoliday = leaveEvents.find(leave => 
-                leave.extendedProps.isHoliday &&
-                leave.extendedProps.countryCode === customer.country.toLowerCase() &&
-                currentDateStr >= leave.start &&
-                currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
-            );
 
-            // Get all employees SPECIFICALLY assigned to this customer
-            const assignedEmployees = appData.assignments
-                .filter(a => a.customerId === customer.id)
-                .map(a => appData.employees.find(e => e.id === a.employeeId))
-                .filter(Boolean);
-
-            if (assignedEmployees.length === 0) return; // Skip if no one is assigned
-
-            // Check each requirement (e.g., '2 from Dev Team')
+            // Check each requirement for the customer (e.g., "1 person from product,fenix,rudras")
             customer.requirements.forEach(req => {
-                const { team, min } = req;
+                const { teams, min } = req;
                 
-                // Filter the assigned employees to just those in the required team
-                const assignedTeamMembers = assignedEmployees.filter(e => e.team === team);
-                const totalAssignedToTeam = assignedTeamMembers.length;
+                // 1. Find all employees who could possibly fulfill this requirement
+                const potentialStaffPool = appData.employees.filter(e => teams.includes(e.team));
                 
-                let onLeaveCount = 0;
+                // 2. Determine who from that pool is actually on leave today
                 const onLeaveNames = new Set();
+                const availableStaffPool = potentialStaffPool.filter(emp => {
+                    // Check for personal vacation
+                    const onVacation = leaveEvents.some(leave =>
+                        !leave.extendedProps.isHoliday &&
+                        leave.extendedProps.employeeName === emp.name &&
+                        currentDateStr >= leave.start &&
+                        currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
+                    );
+                    if (onVacation) {
+                        onLeaveNames.add(`${emp.name} (Vacation)`);
+                        return false; // Not available
+                    }
 
-                if (publicHoliday) {
-                    // If it's a public holiday, ALL assigned team members are considered on leave
-                    onLeaveCount = totalAssignedToTeam;
-                    assignedTeamMembers.forEach(e => onLeaveNames.add(e.name + " (Holiday)"));
-                } else {
-                    // Otherwise, check individual vacations
-                    assignedTeamMembers.forEach(emp => {
-                        const onVacation = leaveEvents.some(leave =>
-                            !leave.extendedProps.isHoliday &&
-                            leave.extendedProps.employeeName === emp.name &&
-                            currentDateStr >= leave.start &&
-                            currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
-                        );
-                        if (onVacation) {
-                            onLeaveCount++;
-                            onLeaveNames.add(emp.name + " (Vacation)");
-                        }
-                    });
-                }
-                
-                const availableStaff = totalAssignedToTeam - onLeaveCount;
+                    // Check for public holiday in the employee's specific country
+                    const onPublicHoliday = leaveEvents.some(leave =>
+                        leave.extendedProps.isHoliday &&
+                        leave.extendedProps.countryCode === emp.country.toLowerCase() &&
+                        currentDateStr >= leave.start &&
+                        currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
+                    );
+                    if (onPublicHoliday) {
+                        onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`);
+                        return false; // Not available
+                    }
 
-                if (availableStaff < min) {
+                    return true; // Is available
+                });
+
+                const availableCount = availableStaffPool.length;
+
+                // 3. Compare available staff to the minimum required
+                if (availableCount < min) {
                     isUnderstaffed = true;
-                    impactDetails.push(`<b>${team}:</b> ${availableStaff}/${min} <strong class="text-danger">(Critical)</strong>`);
-                } else if (availableStaff === min) {
+                    impactDetails.push(`<b>Team(s) ${teams.join('/')}:</b> ${availableCount}/${min} <strong class="text-danger">(Critical)</strong>`);
+                } else if (availableCount === min) {
                     isAtRisk = true;
-                    impactDetails.push(`<b>${team}:</b> ${availableStaff}/${min} <strong class="text-warning">(Warning)</strong>`);
+                    impactDetails.push(`<b>Team(s) ${teams.join('/')}:</b> ${availableCount}/${min} <strong class="text-warning">(Warning)</strong>`);
                 } else {
-                    impactDetails.push(`<b>${team}:</b> ${availableStaff}/${min} (OK)`);
+                    impactDetails.push(`<b>Team(s) ${teams.join('/')}:</b> ${availableCount}/${min} (OK)`);
                 }
 
                 if (onLeaveNames.size > 0) {
@@ -267,19 +250,22 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
             });
 
             // Create a single, summarized event for the customer for that day
-            const description = impactDetails.join('<br>');
-            if (isUnderstaffed) {
-                impactEvents.push({ title: `${customer.name}: Understaffed`, start: currentDateStr, allDay: true, className: 'impact-critical', description });
-            } else if (isAtRisk) {
-                impactEvents.push({ title: `${customer.name}: At Risk`, start: currentDateStr, allDay: true, className: 'impact-warning', description });
+            if (isUnderstaffed || isAtRisk) {
+                const description = impactDetails.join('<br>');
+                if (isUnderstaffed) {
+                    impactEvents.push({ title: `${customer.name}: Understaffed`, start: currentDateStr, allDay: true, className: 'impact-critical', description });
+                } else {
+                    impactEvents.push({ title: `${customer.name}: At Risk`, start: currentDateStr, allDay: true, className: 'impact-warning', description });
+                }
             }
         });
     }
     return impactEvents;
 }
 
+
 // =================================================================================
-// 5. GOOGLE CALENDAR API INTEGRATION (Updated for Holidays)
+// 5. GOOGLE CALENDAR API INTEGRATION (No changes needed here)
 // =================================================================================
 
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
@@ -293,7 +279,6 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
     }
 }
 
-// UPDATED to add country code to holiday events
 async function fetchGoogleCalendarData(fetchInfo) {
     if (gapi.client.getToken() === null) return [];
     const { startStr, endStr } = fetchInfo;
@@ -301,14 +286,15 @@ async function fetchGoogleCalendarData(fetchInfo) {
 
     promises.push(gapi.client.calendar.events.list({ 'calendarId': 'primary', 'timeMin': startStr, 'timeMax': endStr, 'singleEvents': true, 'orderBy': 'startTime' }));
 
-    const countries = [...new Set(appData.customers.map(c => c.country.toLowerCase()))];
+    // Fetch holidays for all unique employee countries, not just customer countries
+    const countries = [...new Set(appData.employees.map(e => e.country.toLowerCase()))];
     countries.forEach(code => {
         const googleCountryCode = mapCountryCode(code);
         if (googleCountryCode) {
             promises.push(
                 gapi.client.calendar.events.list({ 'calendarId': `en.${googleCountryCode}#holiday@group.v.calendar.google.com`, 'timeMin': startStr, 'timeMax': endStr, 'singleEvents': true, 'orderBy': 'startTime' })
-                .then(response => ({ response, countryCode: code })) // Tag response with country code
-                .catch(error => ({ error, countryCode: code })) // Handle errors gracefully
+                .then(response => ({ response, countryCode: code }))
+                .catch(error => ({ error, countryCode: code }))
             );
         }
     });
@@ -322,10 +308,8 @@ async function fetchGoogleCalendarData(fetchInfo) {
             console.warn(`Could not fetch holiday calendar for country: ${result.countryCode}`);
             return;
         }
-
         const response = isPersonalCalendar ? result : result.response;
         const events = response.result.items || [];
-        
         const mappedEvents = events.map(event => {
             const employeeName = isPersonalCalendar ? (event.summary.split(':')[1]?.trim() || event.summary) : null;
             return {
@@ -342,9 +326,8 @@ async function fetchGoogleCalendarData(fetchInfo) {
     return allEvents;
 }
 
-
 function mapCountryCode(code) {
-    const map = { 'usa': 'usa', 'pol': 'polish', 'auh': 'ae', 'qar': 'qa.qatari', 'bru': 'be.belgian', 'spa': 'spain' };
+    const map = { 'usa': 'usa', 'pol': 'polish', 'auh': 'ae', 'qar': 'qa.qatari', 'bru': 'be.belgian', 'spa': 'spain', 'ind': 'indian' };
     return map[code];
 }
 
