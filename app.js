@@ -95,11 +95,18 @@ function renderManagementTables() {
 
 function downloadCsvTemplate(event) {
     event.preventDefault();
-    const csvContent = ["type,name,country,field_1_condition,field_1_value,field_2_condition,field_2_value", "customer,Heron,AUH,required_team,\"product,fenix,rudras\",required_employee_per_team,1", "customer,Hawk,QAR,required_team,\"product,fenix,rudras\",required_employee_per_team,2", "employee,Akshay,IND,team,product", "employee,Bob,AUH,team,fenix", "employee,Carol,QAR,team,rudras"].join("\n");
+    const csvContent = [
+        "type,name,country,field_1_condition,field_1_value,field_2_condition,field_2_value",
+        "customer,Heron,AUH,required_team,\"product,fenix,rudras\",required_employee_per_team,1",
+        "customer,Hawk,QAR,required_team,\"product,fenix,rudras\",required_employee_per_team,2",
+        "employee,Akshay,IND,team,product,,", // Explicitly showing country for employee
+        "employee,Bob,AUH,team,fenix,,",
+        "employee,Carol,QAR,team,rudras,,"
+    ].join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.setAttribute("href", URL.createObjectURL(blob));
-    link.setAttribute("download", "generic_rules_template.csv");
+    link.setAttribute("download", "final_template.csv");
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
 }
 
@@ -134,9 +141,17 @@ function processGenericCsvData(data) {
     data.forEach(row => {
         const type = row.type?.toLowerCase().trim();
         const fields = parseGenericFields(row);
+
         if (type === 'employee') {
-            appData.employees.push({ id: generateId(), name: row.name, country: row.country, team: fields.team });
-        } else if (type === 'customer') { // This else if now correctly pairs with the if
+            // --- THIS IS THE CRITICAL FIX ---
+            // Ensure we are creating the employee with their country
+            appData.employees.push({
+                id: generateId(),
+                name: row.name,
+                country: row.country, // Explicitly read the country column
+                team: fields.team
+            });
+        } else if (type === 'customer') {
             const requirement = {
                 teams: fields.required_team.split(',').map(t => t.trim()),
                 min: parseInt(fields.required_employee_per_team, 10)
@@ -149,7 +164,7 @@ function processGenericCsvData(data) {
             customer.requirements.push(requirement);
         }
     });
-    console.log("Processed Generic App Data:", appData);
+    console.log("Processed Employee and Customer Data:", appData);
 }
 
 // =================================================================================
