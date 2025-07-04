@@ -47,7 +47,18 @@ function saveDataToLocalStorage() {
 function loadDataFromLocalStorage() {
     const savedData = localStorage.getItem('resourcePlannerData');
     if (savedData) {
-        appData = { ...appData, ...JSON.parse(savedData) };
+        const loadedData = JSON.parse(savedData);
+        
+        // This is the robust way to load data.
+        // It starts with a perfect default structure, and then
+        // overwrites it with whatever was loaded. If 'settings'
+        // is missing from loadedData, the default will be kept.
+        appData = {
+            customers: [],
+            employees: [],
+            settings: { vacationCalendarId: null, holidayCalendarId: null },
+            ...loadedData
+        };
     }
 }
 
