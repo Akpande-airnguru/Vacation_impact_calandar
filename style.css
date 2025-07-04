@@ -1,48 +1,92 @@
-/* General body style for a clean look */
+/* style.css - PROFESSIONAL VISUAL REFRESH */
+
+/* 1. GENERAL PAGE & LAYOUT STYLES */
 body {
-    background-color: #f8f9fa; /* Light gray */
+    background-color: #f4f7f9; /* A slightly cooler, professional light gray */
 }
 
-/* Custom styles for FullCalendar events */
-.fc-event {
-    cursor: pointer;
+.card {
+    border: 1px solid #e9ecef; /* Softer borders for cards */
+}
+
+/* 2. CALENDAR HEADER & STRUCTURE */
+
+/* The main calendar container */
+#calendar {
+    background-color: #ffffff; /* White background for the calendar grid */
+}
+
+/* Day headers (Sun, Mon, Tue, etc.) */
+.fc .fc-col-header-cell {
+    background-color: #495057; /* Dark gray header background */
+    color: #ffffff;           /* White text */
+    padding: 8px 0;          /* Add some vertical padding */
+    font-weight: 600;
+}
+
+/* Styling for the day numbers (1, 2, 3...) */
+.fc .fc-daygrid-day-number {
+    font-size: 0.9em;
+    font-weight: 500;
+    color: #6c757d; /* Muted gray for day numbers */
+    padding: 8px;
+}
+
+/* Differentiate weekend days from weekdays */
+.fc-day-sun, .fc-day-sat {
+    background-color: #f8f9fa; /* Very light gray for weekends */
+}
+
+/* 3. CORE STATUS EVENT STYLES (Your Red/Yellow/Green blocks) */
+.fc-daygrid-event.fc-event {
     border: none !important;
     font-weight: 500;
-    padding: 3px 5px;
+    padding: 4px 6px;
     font-size: 0.8em;
-    border-radius: 4px; /* Slightly rounded corners */
-    color: #fff !important; /* White text for all impact events */
+    border-radius: 4px;
+    color: #fff !important;
+    margin-bottom: 4px; /* Space between events */
 }
 
-/* Red for critical impact */
 .fc-event.impact-critical {
-    background-color: #dc3545 !important; /* Bootstrap Red */
+    background-color: #d90429 !important; /* A strong, primary red */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Add a subtle shadow */
 }
 
-/* Yellow for warning impact */
 .fc-event.impact-warning {
-    background-color: #ffc107 !important; /* Bootstrap Yellow */
-    color: #000 !important; /* Black text for yellow background */
+    background-color: #ffb703 !important; /* A vibrant gold/yellow */
+    color: #000 !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-/* NEW: Green for covered status */
 .fc-event.impact-covered {
-    background-color: #198754 !important; /* Bootstrap Green */
+    background-color: #2a9d8f !important; /* A modern teal/green */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-/* Style for the background events (vacations/holidays) */
-.fc-event.google-event .fc-event-main {
-    opacity: 0.6;
-}
-.fc-daygrid-event.google-event {
-    font-size: 0.75em; /* Make background event text smaller */
+
+/* 4. BACKGROUND EVENT STYLES (Vacations and Holidays) */
+
+/* Target the container for background events to apply opacity and positioning */
+.fc-daygrid-bg-event {
+    opacity: 0.7; /* Make the whole event slightly transparent */
+    margin: 0 4px; /* Add some horizontal margin */
 }
 
-/* Style the tooltip for better readability */
+/* Style the text inside the background event */
+.fc-daygrid-bg-event .fc-event-title {
+    color: #212529 !important; /* Use a dark color for text */
+    font-size: 0.75em;
+    font-weight: 500;
+    padding: 2px 5px;
+}
+
+
+/* 5. TOOLTIP STYLE */
 .tooltip-inner {
     max-width: 350px;
     padding: 10px;
-    background-color: #212529; /* Dark background */
+    background-color: #212529;
     text-align: left;
     border-radius: 0.3rem;
 }
