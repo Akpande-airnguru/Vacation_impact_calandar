@@ -204,44 +204,65 @@ function initializeCalendar() {
 function generateImpactEvents(fetchInfo, leaveEvents = []) {
     const impactEvents = [];
     const { start, end } = fetchInfo;
+
     for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
         const currentDateStr = day.toISOString().split('T')[0];
+
         appData.customers.forEach(customer => {
-            let worstStatus = 'covered';
-            const impactDetails = [];
-            const statusSummary = [];
+            let worstStatus = 'covered'; // Assume 'covered' until a problem is found
+            const impactDetails = []; // For the detailed tooltip
+            const statusSummary = []; // For the at-a-glance event title
 
             if (!customer.requirements || customer.requirements.length === 0) {
+                // Handle customers with no requirements
                 const titleHtml = `<span class="fc-event-title-main impact-covered">${customer.name}</span>`;
                 impactEvents.push({ title: titleHtml, start: currentDateStr, allDay: true, className: 'impact-covered', description: 'No staffing requirements defined.' });
-                return;
+                return; // Go to the next customer
             }
-
+            
+            // Loop through each requirement rule (e.g., "1 person from product,fenix,rudras")
             customer.requirements.forEach(req => {
-                const requiredTeams = req.teams;
-                const minPerTeam = req.min;
+                const requiredTeams = req.teams; // e.g., ['product', 'fenix', 'rudras']
+                const minPerTeam = req.min;   // e.g., 1
+                
+                // --- THIS IS THE NEW, SIMPLIFIED LOGIC ---
+                // For this requirement, check each team individually.
                 requiredTeams.forEach(teamName => {
+                    // 1. Get ALL employees in this specific team.
                     const teamStaffPool = appData.employees.filter(e => e.team === teamName);
-                    const onLeaveNames = new Set();
-                    const availableStaff = teamStaffPool.filter(emp => {
-                        // Check for personal vacation
-                        const onVacation = leaveEvents.some(leave => leave.extendedProps.type === 'vacation' && leave.extendedProps.employeeName.includes(emp.name) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
-                        if (onVacation) { onLeaveNames.add(`${emp.name} (Vacation)`); return false; }
-                        
-                        // Check for a company-wide holiday from the user's selected calendar
-                        const onCompanyHoliday = leaveEvents.some(leave => leave.extendedProps.type === 'companyHoliday' && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
-                        if (onCompanyHoliday) { onLeaveNames.add(`${emp.name} (Company Holiday)`); return false; }
+                    const totalInTeam = teamStaffPool.length;
 
-                        // --- THIS IS THE CRITICAL FIX ---
-                        // Check for a public holiday ONLY in the employee's specific country
-                        const onPublicHoliday = leaveEvents.some(leave => leave.extendedProps.type === 'publicHoliday' && leave.extendedProps.countryCode === emp.country.toLowerCase() && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
-                        if (onPublicHoliday) { onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`); return false; }
-                        
-                        return true;
-                    });
+                    // 2. Find out how many of them are on leave.
+                    let onLeaveCount = 0;
+                    const onLeaveNames = new Set();
                     
-                    const availableCount = availableStaff.length;
-                    let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${minPerTeam}`;
+                    teamStaffPool.forEach(emp => {
+                        let isEmployeeOnLeave = false;
+                        // Check for personal vacation
+                        if (leaveEvents.some(leave => leave.extendedProps.type === 'vacation' && leave.extendedProps.employeeName.includes(emp.name) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]))) {
+                            isEmployeeOnLeave = true;
+                            onLeaveNames.add(`${emp.name} (Vacation)`);
+                        }
+                        // Check for a company-wide holiday
+                        else if (leaveEvents.some(leave => leave.extendedProps.type === 'companyHoliday' && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]))) {
+                            isEmployeeOnLeave = true;
+                            onLeaveNames.add(`${emp.name} (Company Holiday)`);
+                        }
+                        // Check for a public holiday in the employee's country
+                        else if (leaveEvents.some(leave => leave.extendedProps.type === 'publicHoliday' && leave.extendedProps.countryCode === emp.country.toLowerCase() && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]))) {
+                            isEmployeeOnLeave = true;
+                            onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`);
+                        }
+
+                        if(isEmployeeOnLeave) {
+                            onLeaveCount++;
+                        }
+                    });
+
+                    const availableCount = totalInTeam - onLeaveCount;
+                    
+                    // 3. Compare available staff to the minimum required for this team.
+                    let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${totalInTeam} (Req: ${minPerTeam})`;
                     if (availableCount < minPerTeam) {
                         worstStatus = 'critical';
                         teamDetail += ` <strong class="text-danger">(Critical)</strong>`;
@@ -253,19 +274,31 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     } else {
                         teamDetail += ` (OK)`;
                     }
-                    impactDetails.push(teamDetail);
-                    if (onLeaveNames.size > 0) {
-                        impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`);
+
+                    // Only add team details to the tooltip if it's not OK or if someone is on leave
+                    if (availableCount < minPerTeam || onLeaveNames.size > 0) {
+                       impactDetails.push(teamDetail);
+                       if (onLeaveNames.size > 0) {
+                           impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`);
+                       }
                     }
                 });
             });
 
+            // Create a single, summarized event for the customer for that day.
             const statusClass = `impact-${worstStatus}`;
             let titleHtml = `<span class="fc-event-title-main ${statusClass}">${customer.name}</span>`;
-            if (statusSummary.length > 0) {
+            if (worstStatus !== 'covered' && statusSummary.length > 0) {
                 titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
             }
-            const eventData = { title: titleHtml, start: currentDateStr, allDay: true, className: statusClass, description: impactDetails.join('<br>') };
+            
+            const eventData = {
+                title: titleHtml,
+                start: currentDateStr,
+                allDay: true,
+                className: statusClass,
+                description: impactDetails.length > 0 ? impactDetails.join('<br>') : "All teams are fully covered."
+            };
             impactEvents.push(eventData);
         });
     }
