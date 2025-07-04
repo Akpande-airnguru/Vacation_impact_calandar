@@ -159,10 +159,21 @@ function processGenericCsvData(data) {
 function initializeCalendar() {
     const calendarEl = document.getElementById('calendar');
     calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'dayGridMonth',
-        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek' },
+        initialView: 'listWeek',
+         headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'listWeek,dayGridMonth' // listWeek is now the default
+        },
+        noEventsContent: 'No impacted customers for this period.',
         events: fetchCalendarEvents,
-        eventDidMount: (info) => new bootstrap.Tooltip(info.el, { title: info.event.extendedProps.description, placement: 'top', trigger: 'hover', container: 'body', html: true })
+        eventDidMount: (info) => new bootstrap.Tooltip(info.el, {
+            title: info.event.extendedProps.description,
+            placement: 'top',
+            trigger: 'hover',
+            container: 'body',
+            html: true
+        })
     });
     calendar.render();
 }
