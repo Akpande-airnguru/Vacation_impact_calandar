@@ -223,22 +223,50 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     const onLeaveNames = new Set();
                     teamStaffPool.forEach(emp => {
                         let isEmployeeOnLeave = false;
-                        if (leaveEvents.some(leave => leave.extendedProps.type === 'vacation' && leave.extendedProps.employeeName.includes(emp.name) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]))) { isEmployeeOnLeave = true; onLeaveNames.add(`${emp.name} (Vacation)`); }
-                        else if (leaveEvents.some(leave => leave.extendedProps.type === 'companyHoliday' && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]))) { isEmployeeOnLeave = true; onLeaveNames.add(`${emp.name} (Company Holiday)`); }
-                        else if (leaveEvents.some(leave => leave.extendedProps.type === 'publicHoliday' && emp.country && leave.extendedProps.countryCode === emp.country.toLowerCase() && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]))) { isEmployeeOnLeave = true; onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`); }
-                        if (isEmployeeOnLeave) onLeaveCount++;
+                        const empCountry = emp.country?.toLowerCase();
+                        
+                        // --- THIS IS THE CORRECTED HOLIDAY LOGIC ---
+                        const onHoliday = leaveEvents.find(leave =>
+                            (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') &&
+                            leave.extendedProps.countryCode === empCountry &&
+                            currentDateStr >= leave.start &&
+                            currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
+                        );
+                        
+                        const onVacation = leaveEvents.find(leave => 
+                            leave.extendedProps.type === 'vacation' && 
+                            leave.extendedProps.employeeName.includes(emp.name) && 
+                            currentDateStr >= leave.start && 
+                            currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
+                        );
+
+                        if (onVacation) {
+                            isEmployeeOnLeave = true;
+                            onLeaveNames.add(`${emp.name} (Vacation)`);
+                        } else if (onHoliday) {
+                            isEmployeeOnLeave = true;
+                            onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`);
+                        }
+                        
+                        if(isEmployeeOnLeave) onLeaveCount++;
                     });
+                    
                     const availableCount = totalInTeam - onLeaveCount;
                     let teamStatus = 'covered';
-                    if (availableCount < minPerTeam) { teamStatus = 'critical'; } else if (availableCount === minPerTeam) { teamStatus = 'warning'; }
-                    if (teamStatus === 'critical') { worstStatus = 'critical'; } else if (teamStatus === 'warning' && worstStatus !== 'critical') { worstStatus = 'warning'; }
+                    if (availableCount < minPerTeam) { teamStatus = 'critical'; }
+                    else if (availableCount === minPerTeam) { teamStatus = 'warning'; }
+
+                    if (teamStatus === 'critical') { worstStatus = 'critical'; }
+                    else if (teamStatus === 'warning' && worstStatus !== 'critical') { worstStatus = 'warning'; }
+
                     let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${totalInTeam} (Req: ${minPerTeam})`;
                     if (teamStatus === 'critical') { teamDetail += ` <strong class="text-danger">(Critical)</strong>`; statusSummary.push(`${teamName}: ${availableCount}/${minPerTeam}`); }
                     else if (teamStatus === 'warning') { teamDetail += ` <strong class="text-warning">(Warning)</strong>`; statusSummary.push(`${teamName}: ${availableCount}/${minPerTeam}`); }
                     else { teamDetail += ` (OK)`; }
-                    if (availableCount < totalInTeam) { impactDetails.push(teamDetail); if (onLeaveNames.size > 0) { impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); } }
+                    if (availableCount < totalInTeam || onLeaveNames.size > 0) { impactDetails.push(teamDetail); if (onLeaveNames.size > 0) { impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); } }
                 });
             });
+
             const statusClass = `impact-${worstStatus}`;
             let titleHtml = `<span class="fc-event-title-main ${statusClass}">${customer.name}</span>`;
             if (worstStatus !== 'covered' && statusSummary.length > 0) { titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`; }
@@ -262,7 +290,83 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
         failureCallback(error);
     }
 }
-async function fetchGoogleCalendarData(fetchInfo) { const { vacationCalendarId, holidayCalendarId } = appData.settings; if (gapi.client.getToken() === null) return []; const { startStr, endStr } = fetchInfo; const promises = []; if (vacationCalendarId) { promises.push(gapi.client.calendar.events.list({ calendarId: vacationCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'vacation' }))); } if (holidayCalendarId) { promises.push(gapi.client.calendar.events.list({ calendarId: holidayCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'companyHoliday' }))); } const employeeCountries = [...new Set(appData.employees.filter(e => e.country).map(e => e.country.toLowerCase()))]; employeeCountries.forEach(code => { const googleCountryCode = mapCountryCode(code); if (googleCountryCode) { promises.push(gapi.client.calendar.events.list({ calendarId: `en.${googleCountryCode}#holiday@group.v.calendar.google.com`, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'publicHoliday', countryCode: code })).catch(error => ({ error, countryCode: code }))); } }); const results = await Promise.allSettled(promises); let allEvents = []; results.forEach(result => { if (result.status === 'fulfilled') { const { response, type, countryCode, error } = result.value; if (error) { console.warn(`Could not fetch holiday calendar for country: ${countryCode}`); return; } const events = response.result.items || []; const mappedEvents = events.map(event => ({ title: event.summary, start: event.start.date || event.start.dateTime, end: event.end.date || event.end.dateTime, allDay: !!event.start.date, display: 'background', className: 'google-event', extendedProps: { employeeName: type === 'vacation' ? (event.summary.split(':')[1]?.trim() || event.summary) : null, type: type, countryCode: countryCode, description: event.summary } })); allEvents = allEvents.concat(mappedEvents); } else { console.error("Failed to fetch calendar:", result.reason); } }); return allEvents; }
+async function fetchGoogleCalendarData(fetchInfo) {
+    const { vacationCalendarId, holidayCalendarId } = appData.settings;
+    if (gapi.client.getToken() === null) return [];
+    const { startStr, endStr } = fetchInfo;
+    const promises = [];
+
+    // 1. Fetch from user's selected "Vacation" calendar
+    if (vacationCalendarId) {
+        promises.push(
+            gapi.client.calendar.events.list({ calendarId: vacationCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
+            .then(response => ({ response, type: 'vacation' }))
+        );
+    }
+    // 2. Fetch from user's selected "Official Holiday" calendar
+    if (holidayCalendarId) {
+        promises.push(
+            gapi.client.calendar.events.list({ calendarId: holidayCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
+            .then(response => ({ response, type: 'officialHoliday' }))
+        );
+    }
+    
+    // 3. (Optional but good) Fetch public holidays for each unique EMPLOYEE country
+    const employeeCountries = [...new Set(appData.employees.filter(e => e.country).map(e => e.country.toLowerCase()))];
+    employeeCountries.forEach(code => {
+        const googleCountryCode = mapCountryCode(code);
+        if (googleCountryCode) {
+            promises.push(
+                gapi.client.calendar.events.list({ calendarId: `en.${googleCountryCode}#holiday@group.v.calendar.google.com`, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
+                .then(response => ({ response, type: 'publicHoliday', countryCode: code }))
+                .catch(error => ({ error, countryCode: code }))
+            );
+        }
+    });
+
+    const results = await Promise.allSettled(promises);
+    let allEvents = [];
+    results.forEach(result => {
+        if (result.status === 'fulfilled' && !result.value.error) {
+            const { response, type, countryCode } = result.value;
+            const events = response.result.items || [];
+            
+            const mappedEvents = events.map(event => {
+                let eventCountry = countryCode; // Use the country from the promise by default
+                let eventTitle = event.summary;
+                
+                // --- THIS IS THE NEW LOGIC ---
+                // If it's from the Official Holiday calendar, try to parse the country from the title
+                if (type === 'officialHoliday') {
+                    const match = event.summary.match(/^([A-Z]{3})\s*-\s*(.*)$/); // Matches "CHI - Holiday Name"
+                    if (match) {
+                        eventCountry = match[1].toLowerCase(); // e.g., 'chi'
+                        eventTitle = match[2]; // e.g., 'San Pedro y San Pablo'
+                    }
+                }
+
+                return {
+                    title: event.summary, // Keep original summary for display
+                    start: event.start.date || event.start.dateTime,
+                    end: event.end.date || event.end.dateTime,
+                    allDay: !!event.start.date,
+                    display: 'background',
+                    className: 'google-event',
+                    extendedProps: {
+                        employeeName: type === 'vacation' ? (event.summary.split(':')[1]?.trim() || event.summary) : null,
+                        type: type,
+                        countryCode: eventCountry, // The newly parsed country code
+                        description: eventTitle
+                    }
+                };
+            });
+            allEvents = allEvents.concat(mappedEvents);
+        } else if (result.status === 'rejected') {
+            console.error("Failed to fetch calendar:", result.reason);
+        }
+    });
+    return allEvents;
+}
 function mapCountryCode(code) { const map = { 'usa': 'usa', 'pol': 'polish', 'auh': 'ae', 'qar': 'qa.qatari', 'bru': 'be.belgian', 'spa': 'spain', 'ind': 'indian' }; return map[code]; }
 window.gisLoaded = function() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '', }); gisInited = true; maybeEnableButtons(); };
 async function initializeGapiClient() { try { await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS }); gapiInited = true; maybeEnableButtons(); if (gapi.client.getToken()) { populateCalendarSelectors(); } } catch (e) { console.error("Error initializing GAPI client:", e); } }
