@@ -49,10 +49,13 @@ function loadDataFromLocalStorage() {
     const savedData = localStorage.getItem('resourcePlannerData');
     if (savedData) {
         const loadedData = JSON.parse(savedData);
-        appData = { ...appData, ...loadedData };
-        if (!appData.settings) {
-            appData.settings = { vacationCalendarId: null, holidayCalendarId: null };
-        }
+        // Use default structure to ensure new properties are not lost
+        appData = {
+            customers: [],
+            employees: [],
+            settings: { vacationCalendarId: null, holidayCalendarId: null },
+            ...loadedData
+        };
     }
 }
 
@@ -121,18 +124,23 @@ function parseGenericFields(row) {
     return fields;
 }
 
-// CORRECTED VERSION of this function
+// CORRECTED VERSION of this function with the missing brace
 function processGenericCsvData(data) {
-    appData = { customers: [], employees: [] };
+    // Reset the data, but keep the settings
+    appData.customers = [];
+    appData.employees = [];
     const generateId = () => Date.now() + Math.random();
+
     data.forEach(row => {
         const type = row.type?.toLowerCase().trim();
         const fields = parseGenericFields(row);
         if (type === 'employee') {
             appData.employees.push({ id: generateId(), name: row.name, country: row.country, team: fields.team });
-        } // <--- THIS BRACE WAS MISSING
-        else if (type === 'customer') {
-            const requirement = { teams: fields.required_team.split(',').map(t => t.trim()), min: parseInt(fields.required_employee_per_team, 10) };
+        } else if (type === 'customer') { // This else if now correctly pairs with the if
+            const requirement = {
+                teams: fields.required_team.split(',').map(t => t.trim()),
+                min: parseInt(fields.required_employee_per_team, 10)
+            };
             let customer = appData.customers.find(c => c.name === row.name);
             if (!customer) {
                 customer = { id: generateId(), name: row.name, country: row.country, requirements: [] };
@@ -143,7 +151,6 @@ function processGenericCsvData(data) {
     });
     console.log("Processed Generic App Data:", appData);
 }
-
 
 // =================================================================================
 // 4. CALENDAR DISPLAY & LOGIC
