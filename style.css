@@ -1,0 +1,11 @@
+/* Custom styles for FullCalendar events */
+.fc-event.impact-critical {
+    background-color: #dc3545; /* Red */
+    border-color: #dc3545;
+}
+
+.fc-event.impact-warning {
+    background-color: #ffc107; /* Yellow */
+    border-color: #ffc107;
+    color: #000; /* Text color for yellow background */
+}
