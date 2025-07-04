@@ -42,72 +42,19 @@ function initializeApp() {
 
 function saveDataToLocalStorage() {
     localStorage.setItem('resourcePlannerData', JSON.stringify(appData));
-    console.log("Data saved to localStorage.");
+    console.log("DEBUG: Data has been saved to localStorage.");
 }
 
 function loadDataFromLocalStorage() {
     const savedData = localStorage.getItem('resourcePlannerData');
     if (savedData) {
         const loadedData = JSON.parse(savedData);
-        // Use default structure to ensure new properties are not lost
-        appData = {
-            customers: [],
-            employees: [],
-            settings: { vacationCalendarId: null, holidayCalendarId: null },
-            ...loadedData
-        };
+        appData = { ...appData, ...loadedData };
+        // --- DEBUG CHECKPOINT 2 ---
+        console.log("DEBUG: Data after loading from localStorage:", JSON.stringify(appData, null, 2));
+    } else {
+        console.log("DEBUG: No data found in localStorage on load.");
     }
-}
-
-function setupEventListeners() {
-    document.getElementById('csv-import').addEventListener('change', handleCsvImport);
-    document.getElementById('download-template-btn').addEventListener('click', downloadCsvTemplate);
-    document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
-    document.getElementById('signout_button').addEventListener('click', handleSignoutClick);
-    document.getElementById('vacation-calendar-select').addEventListener('change', (e) => {
-        appData.settings.vacationCalendarId = e.target.value;
-        saveDataToLocalStorage();
-        calendar.refetchEvents();
-    });
-    document.getElementById('holiday-calendar-select').addEventListener('change', (e) => {
-        appData.settings.holidayCalendarId = e.target.value;
-        saveDataToLocalStorage();
-        calendar.refetchEvents();
-    });
-}
-
-function renderManagementTables() {
-    const customerList = appData.customers.map(c => {
-        const reqs = c.requirements.map(r => `${r.teams.join(', ')}: ${r.min} required`).join('<br>');
-        return `<li><strong>${c.name} (${c.country})</strong><br><small>${reqs}</small></li>`;
-    }).join('');
-    const employeeList = appData.employees.map(e => `<li>${e.name} (${e.country}) - Team: ${e.team}</li>`).join('');
-    const dataFormsDiv = document.getElementById('data-input-forms');
-    dataFormsDiv.innerHTML = `<div class="card border-0"><div class="card-body p-0">
-        <h6>Current Customers:</h6><ul class="list-unstyled">${customerList || '<li>None loaded</li>'}</ul>
-        <h6 class="mt-3">Current Employees:</h6><ul class="list-unstyled">${employeeList || '<li>None loaded</li>'}</ul>
-    </div></div>`;
-}
-
-// =================================================================================
-// 3. GENERIC CSV IMPORT & EXPORT
-// =================================================================================
-
-function downloadCsvTemplate(event) {
-    event.preventDefault();
-    const csvContent = [
-        "type,name,country,field_1_condition,field_1_value,field_2_condition,field_2_value",
-        "customer,Heron,AUH,required_team,\"product,fenix,rudras\",required_employee_per_team,1",
-        "customer,Hawk,QAR,required_team,\"product,fenix,rudras\",required_employee_per_team,2",
-        "employee,Akshay,IND,team,product,,", // Explicitly showing country for employee
-        "employee,Bob,AUH,team,fenix,,",
-        "employee,Carol,QAR,team,rudras,,"
-    ].join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.setAttribute("href", URL.createObjectURL(blob));
-    link.setAttribute("download", "final_template.csv");
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
 }
 
 function handleCsvImport(event) {
@@ -115,11 +62,99 @@ function handleCsvImport(event) {
     if (file) {
         Papa.parse(file, {
             header: true, skipEmptyLines: true,
-            complete: (results) => { processGenericCsvData(results.data); saveDataToLocalStorage(); alert('Data imported successfully! The page will now reload.'); location.reload(); },
+            complete: (results) => {
+                processGenericCsvData(results.data);
+                saveDataToLocalStorage();
+                alert('Data imported. The page will now reload to apply changes.');
+                location.reload();
+            },
             error: (err) => alert(`CSV Parsing Error: ${err.message}`)
         });
     }
 }
+
+function processGenericCsvData(data) {
+    appData.customers = [];
+    appData.employees = [];
+    const generateId = () => Date.now() + Math.random();
+
+    data.forEach(row => {
+        const type = row.type?.toLowerCase().trim();
+        const fields = parseGenericFields(row);
+        if (type === 'employee') {
+            appData.employees.push({ id: generateId(), name: row.name, country: row.country, team: fields.team });
+        } else if (type === 'customer') {
+            const requirement = { teams: fields.required_team.split(',').map(t => t.trim()), min: parseInt(fields.required_employee_per_team, 10) };
+            let customer = appData.customers.find(c => c.name === row.name);
+            if (!customer) {
+                customer = { id: generateId(), name: row.name, country: row.country, requirements: [] };
+                appData.customers.push(customer);
+            }
+            customer.requirements.push(requirement);
+        }
+    });
+    // --- DEBUG CHECKPOINT 1 ---
+    console.log("DEBUG: Data immediately after CSV processing:", JSON.stringify(appData, null, 2));
+}
+
+// =================================================================================
+// 4. CALENDAR DISPLAY & LOGIC
+// =================================================================================
+
+function generateImpactEvents(fetchInfo, leaveEvents = []) {
+    // --- DEBUG CHECKPOINT 3 ---
+    console.log("DEBUG: Data at the start of generateImpactEvents:", JSON.stringify(appData, null, 2));
+
+    const impactEvents = [];
+    // ... (rest of the function is the same, no changes needed inside)
+    const { start, end } = fetchInfo;
+    for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
+        const currentDateStr = day.toISOString().split('T')[0];
+        appData.customers.forEach(customer => {
+            let worstStatus = 'covered';
+            const impactDetails = [];
+            const statusSummary = [];
+            if (!customer.requirements || customer.requirements.length === 0) {
+                const titleHtml = `<span class="fc-event-title-main impact-covered">${customer.name}</span>`;
+                impactEvents.push({ title: titleHtml, start: currentDateStr, allDay: true, className: 'impact-covered', description: 'No staffing requirements defined.' });
+                return;
+            }
+            customer.requirements.forEach(req => {
+                const requiredTeams = req.teams;
+                const minPerTeam = req.min;
+                requiredTeams.forEach(teamName => {
+                    const teamStaffPool = appData.employees.filter(e => e.team === teamName);
+                    const totalInTeam = teamStaffPool.length;
+                    let onLeaveCount = 0;
+                    const onLeaveNames = new Set();
+                    teamStaffPool.forEach(emp => {
+                        let isEmployeeOnLeave = false;
+                        if (leaveEvents.some(leave => leave.extendedProps.type === 'vacation' && leave.extendedProps.employeeName.includes(emp.name) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]))) { isEmployeeOnLeave = true; onLeaveNames.add(`${emp.name} (Vacation)`); }
+                        else if (leaveEvents.some(leave => leave.extendedProps.type === 'companyHoliday' && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]))) { isEmployeeOnLeave = true; onLeaveNames.add(`${emp.name} (Company Holiday)`); }
+                        else if (leaveEvents.some(leave => leave.extendedProps.type === 'publicHoliday' && leave.extendedProps.countryCode === emp.country.toLowerCase() && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]))) { isEmployeeOnLeave = true; onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`); }
+                        if (isEmployeeOnLeave) onLeaveCount++;
+                    });
+                    const availableCount = totalInTeam - onLeaveCount;
+                    let teamStatus = 'covered';
+                    if (availableCount < minPerTeam) { teamStatus = 'critical'; } else if (availableCount === minPerTeam) { teamStatus = 'warning'; }
+                    if (teamStatus === 'critical') { worstStatus = 'critical'; } else if (teamStatus === 'warning' && worstStatus !== 'critical') { worstStatus = 'warning'; }
+                    let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${totalInTeam} (Req: ${minPerTeam})`;
+                    if (teamStatus === 'critical') { teamDetail += ` <strong class="text-danger">(Critical)</strong>`; statusSummary.push(`${teamName}: ${availableCount}/${minPerTeam}`); }
+                    else if (teamStatus === 'warning') { teamDetail += ` <strong class="text-warning">(Warning)</strong>`; statusSummary.push(`${teamName}: ${availableCount}/${minPerTeam}`); }
+                    else { teamDetail += ` (OK)`; }
+                    if (availableCount < minPerTeam || onLeaveNames.size > 0) { impactDetails.push(teamDetail); if (onLeaveNames.size > 0) { impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); } }
+                });
+            });
+            const statusClass = `impact-${worstStatus}`;
+            let titleHtml = `<span class="fc-event-title-main ${statusClass}">${customer.name}</span>`;
+            if (worstStatus !== 'covered' && statusSummary.length > 0) { titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`; }
+            const eventData = { title: titleHtml, start: currentDateStr, allDay: true, className: statusClass, description: impactDetails.length > 0 ? impactDetails.join('<br>') : "All teams are fully covered." };
+            impactEvents.push(eventData);
+        });
+    }
+    return impactEvents;
+}
+
 
 function parseGenericFields(row) {
     const fields = {};
