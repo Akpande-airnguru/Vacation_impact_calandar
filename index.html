@@ -44,16 +44,30 @@
                             <a href="#" id="download-template-btn" class="small">Download CSV Template</a>
                         </div>
                         <!-- Google Calendar -->
-                        <div class="p-3 border rounded">
-                            <h6>Google Calendar Sync</h6>
-                            <p class="small text-muted">Connect to sync holidays and vacations from your primary calendar.</p>
-                            <button id="authorize_button" class="btn btn-primary" style="visibility: hidden;">Connect Google Calendar</button>
-                            <button id="signout_button" class="btn btn-secondary" style="display: none;">Sign Out</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+<div class="p-3 border rounded">
+    <h6>Google Calendar Sync</h6>
+    <p class="small text-muted">Connect to sync holidays and vacations.</p>
+    <button id="authorize_button" class="btn btn-primary" style="visibility: hidden;">Connect Google Calendar</button>
+    <button id="signout_button" class="btn btn-secondary" style="display: none;">Sign Out</button>
+
+    <!-- NEW UI SECTION - Initially Hidden -->
+    <div id="calendar-selection-ui" class="mt-3" style="display: none;">
+        <div class="mb-2">
+            <label for="vacation-calendar-select" class="form-label small"><b>Vacation Calendar:</b></label>
+            <select id="vacation-calendar-select" class="form-select form-select-sm">
+                <option value="">-- Select a calendar --</option>
+            </select>
         </div>
+        <div>
+            <label for="holiday-calendar-select" class="form-label small"><b>Official Holiday Calendar:</b></label>
+            <select id="holiday-calendar-select" class="form-select form-select-sm">
+                <option value="">-- Select a calendar --</option>
+            </select>
+        </div>
+    </div>
+    <!-- END NEW UI SECTION -->
+</div>
+
 
         <!-- The Calendar Display -->
         <h3 class="mt-4">Calendar View</h3>
