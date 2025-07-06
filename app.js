@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', initializeApp);
 function initializeApp() {
     console.log("Initializing App...");
     loadDataFromLocalStorage();
-    setupEventListeners(); // This will now work
+    setupEventListeners();
     renderManagementTables();
     initializeCalendar();
     gapi.load('client', initializeGapiClient);
@@ -49,20 +49,18 @@ function loadDataFromLocalStorage() {
     if (savedData) {
         const loadedData = JSON.parse(savedData);
         
-        // This is the robust way to load data.
-        // It starts with a perfect default structure, and then
-        // overwrites it with whatever was loaded. If 'settings'
-        // is missing from loadedData, the default will be kept.
+        // Robustly load data, ensuring all keys exist.
         appData = {
             customers: [],
             employees: [],
+            // NEW REGION LOGIC: Ensure 'regions' is part of the default structure
+            regions: [], 
             settings: { vacationCalendarId: null, holidayCalendarId: null },
             ...loadedData
         };
     }
 }
 
-// --- THIS FUNCTION WAS MISSING. IT IS NOW RESTORED. ---
 function setupEventListeners() {
     document.getElementById('csv-import').addEventListener('change', handleCsvImport);
     document.getElementById('download-template-btn').addEventListener('click', downloadCsvTemplate);
@@ -79,16 +77,28 @@ function setupEventListeners() {
         calendar.refetchEvents();
     });
 }
-// --- END OF RESTORED FUNCTION ---
 
 function renderManagementTables() {
     const customerList = appData.customers.map(c => {
         const reqs = c.requirements.map(r => `${r.teams.join(', ')}: ${r.min} required`).join('<br>');
         return `<li><strong>${c.name} (${c.country})</strong><br><small>${reqs}</small></li>`;
     }).join('');
+
     const employeeList = appData.employees.map(e => `<li>${e.name} (${e.country}) - Team: ${e.team}</li>`).join('');
+    
+    // NEW REGION LOGIC: Create a list to display loaded regions
+    const regionList = appData.regions.map(r => {
+        const reqs = r.requirements.map(req => `${req.teams.join(', ')}: ${req.min} required`).join('<br>');
+        return `<li><strong>Region: ${r.name} (Countries: ${r.countries.join(', ')})</strong><br><small>${reqs}</small></li>`;
+    }).join('');
+
     const dataFormsDiv = document.getElementById('data-input-forms');
-    dataFormsDiv.innerHTML = `<div class="card border-0"><div class="card-body p-0"><h6>Current Customers:</h6><ul class="list-unstyled">${customerList || '<li>None loaded</li>'}</ul><h6 class="mt-3">Current Employees:</h6><ul class="list-unstyled">${employeeList || '<li>None loaded</li>'}</ul></div></div>`;
+    // NEW REGION LOGIC: Add the region list to the display area
+    dataFormsDiv.innerHTML = `<div class="card border-0"><div class="card-body p-0">
+                                <h6>Current Customers:</h6><ul class="list-unstyled">${customerList || '<li>None loaded</li>'}</ul>
+                                <h6 class="mt-3">Current Regions:</h6><ul class="list-unstyled">${regionList || '<li>None loaded</li>'}</ul>
+                                <h6 class="mt-3">Current Employees:</h6><ul class="list-unstyled">${employeeList || '<li>None loaded</li>'}</ul>
+                              </div></div>`;
 }
 
 
@@ -98,7 +108,16 @@ function renderManagementTables() {
 
 function downloadCsvTemplate(event) {
     event.preventDefault();
-    const csvContent = ["type,name,country,field_1_condition,field_1_value,field_2_condition,field_2_value", "customer,Heron,AUH,required_team,\"product,fenix,rudras\",required_employee_per_team,1", "customer,Hawk,QAR,required_team,\"product,fenix,rudras\",required_employee_per_team,2", "employee,Akshay,IND,team,product,,", "employee,Bob,AUH,team,fenix,,", "employee,Carol,QAR,team,rudras,,"].join("\n");
+    // NEW REGION LOGIC: Add the region example to the downloadable template
+    const csvContent = [
+        "type,name,country,field_1_condition,field_1_value,field_2_condition,field_2_value",
+        "customer,Heron,AUH,required_team,\"product_ASIA,fenix,rudras\",required_employee_per_team,1",
+        "customer,Hawk,QAR,required_team,\"product_ASIA,fenix,rudras\",required_employee_per_team,2",
+        "employee,Akshay,IND,team,product_ASIA,,",
+        "employee,Bob,AUH,team,fenix,,",
+        "employee,Carol,QAR,team,rudras,,",
+        "region,ASIA,\"IND,QAR,AUH\",required_team,\"product_ASIA,fenix,rudras\",required_employee_per_team,1"
+    ].join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.setAttribute("href", URL.createObjectURL(blob));
@@ -133,12 +152,11 @@ function parseGenericFields(row) {
 }
 
 function processGenericCsvData(data) {
-    // --- THIS IS THE CRITICAL FIX ---
-    // Reset only the data arrays, PRESERVE the settings object.
+    // Reset data arrays, preserve settings
     appData.customers = [];
     appData.employees = [];
-    // The buggy line "appData = { customers: [], employees: [] };" is now gone.
-    // --- END OF FIX ---
+    // NEW REGION LOGIC: Reset regions array on import
+    appData.regions = [];
 
     const generateId = () => Date.now() + Math.random();
 
@@ -164,6 +182,24 @@ function processGenericCsvData(data) {
                 appData.customers.push(customer);
             }
             customer.requirements.push(requirement);
+        // NEW REGION LOGIC: Handle the 'region' type from the CSV
+        } else if (type === 'region') {
+            const requirement = {
+                teams: fields.required_team.split(',').map(t => t.trim()),
+                min: parseInt(fields.required_employee_per_team, 10)
+            };
+            let region = appData.regions.find(r => r.name === row.name);
+            if (!region) {
+                region = { 
+                    id: generateId(), 
+                    name: row.name, 
+                    // Parse the comma-separated country list into an array
+                    countries: row.country.split(',').map(c => c.trim()), 
+                    requirements: [] 
+                };
+                appData.regions.push(region);
+            }
+            region.requirements.push(requirement);
         }
     });
 }
@@ -186,19 +222,15 @@ function initializeCalendar() {
         eventContent: function(arg) {
             let htmlContent = '';
             
-            // Handle Holiday/Vacation Events
             if (arg.event.extendedProps.type) {
                 htmlContent = `<div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>`;
             }
-            // Handle Customer Impact Events
             else {
                 if (arg.view.type === 'dayGridMonth') {
-                    // In month view, just show the customer name. The color bar indicates status.
                     const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
                     const customerName = mainTitleMatch ? mainTitleMatch[1] : 'Event';
                     htmlContent = `<div class="fc-event-title">${customerName}</div>`;
                 } else {
-                    // In list view, use the original rich HTML with status details.
                     htmlContent = arg.event.title;
                 }
             }
@@ -206,11 +238,7 @@ function initializeCalendar() {
         },
 
         eventDidMount: function(info) {
-            // Remove any lingering tooltips to prevent duplicates
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
-            
-            // Only attach tooltips to events that have a description to show.
-            // This smartly adds them to holidays and detailed impact events.
             if (info.event.extendedProps.description) {
                 new bootstrap.Tooltip(info.el, {
                     title: info.event.extendedProps.description,
@@ -222,14 +250,8 @@ function initializeCalendar() {
             }
         },
         
-        // Configuration for the list view
-        listDayFormat: {
-            month: 'long', day: 'numeric', year: 'numeric', weekday: 'long'
-        },
-        buttonText: {
-            listWeek: 'week',
-            dayGridMonth: 'month'
-        },
+        listDayFormat: { month: 'long', day: 'numeric', year: 'numeric', weekday: 'long' },
+        buttonText: { listWeek: 'week', dayGridMonth: 'month' },
         noEventsContent: 'All customers are fully covered for this period.',
     });
     
@@ -242,6 +264,8 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
     const { start, end } = fetchInfo;
     for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
         const currentDateStr = day.toISOString().split('T')[0];
+
+        // --- 1. CUSTOMER CHECK (Existing Logic) ---
         appData.customers.forEach(customer => {
             let worstStatus = 'covered';
             const impactDetails = [];
@@ -262,41 +286,18 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     teamStaffPool.forEach(emp => {
                         let isEmployeeOnLeave = false;
                         const empCountry = emp.country?.toLowerCase();
-                        
-                        // --- THIS IS THE CORRECTED HOLIDAY LOGIC ---
-                        const onHoliday = leaveEvents.find(leave =>
-                            (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') &&
-                            leave.extendedProps.countryCode === empCountry &&
-                            currentDateStr >= leave.start &&
-                            currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
-                        );
-                        
-                        const onVacation = leaveEvents.find(leave => 
-                            leave.extendedProps.type === 'vacation' && 
-                            leave.extendedProps.employeeName.includes(emp.name) && 
-                            currentDateStr >= leave.start && 
-                            currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
-                        );
-
-                        if (onVacation) {
-                            isEmployeeOnLeave = true;
-                            onLeaveNames.add(`${emp.name} (Vacation)`);
-                        } else if (onHoliday) {
-                            isEmployeeOnLeave = true;
-                            onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`);
-                        }
-                        
+                        const onHoliday = leaveEvents.find(leave => (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.countryCode === empCountry && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        const onVacation = leaveEvents.find(leave => leave.extendedProps.type === 'vacation' && leave.extendedProps.employeeName.includes(emp.name) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        if (onVacation) { isEmployeeOnLeave = true; onLeaveNames.add(`${emp.name} (Vacation)`); }
+                        else if (onHoliday) { isEmployeeOnLeave = true; onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`); }
                         if(isEmployeeOnLeave) onLeaveCount++;
                     });
-                    
                     const availableCount = totalInTeam - onLeaveCount;
                     let teamStatus = 'covered';
                     if (availableCount < minPerTeam) { teamStatus = 'critical'; }
                     else if (availableCount === minPerTeam) { teamStatus = 'warning'; }
-
                     if (teamStatus === 'critical') { worstStatus = 'critical'; }
                     else if (teamStatus === 'warning' && worstStatus !== 'critical') { worstStatus = 'warning'; }
-
                     let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${totalInTeam} (Req: ${minPerTeam})`;
                     if (teamStatus === 'critical') { teamDetail += ` <strong class="text-danger">(Critical)</strong>`; statusSummary.push(`${teamName}: ${availableCount}/${minPerTeam}`); }
                     else if (teamStatus === 'warning') { teamDetail += ` <strong class="text-warning">(Warning)</strong>`; statusSummary.push(`${teamName}: ${availableCount}/${minPerTeam}`); }
@@ -304,21 +305,66 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     if (availableCount < totalInTeam || onLeaveNames.size > 0) { impactDetails.push(teamDetail); if (onLeaveNames.size > 0) { impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); } }
                 });
             });
-
-            const statusClass = `impact-event impact-${worstStatus}`; // Added "impact-event" class
+            const statusClass = `impact-event impact-${worstStatus}`;
             let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${customer.name}</span>`;
-            if (statusSummary.length > 0) {
-                titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
-            }
+            if (statusSummary.length > 0) { titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`; }
             const eventData = { title: titleHtml, start: currentDateStr, allDay: true, className: statusClass, description: impactDetails.length > 0 ? impactDetails.join('<br>') : "All teams are fully covered." };
             impactEvents.push(eventData);
         });
+
+        // --- 2. NEW REGION LOGIC: REGION CHECK ---
+        appData.regions.forEach(region => {
+            let worstStatus = 'covered';
+            const impactDetails = [];
+            const statusSummary = [];
+            if (!region.requirements || region.requirements.length === 0) return;
+
+            region.requirements.forEach(req => {
+                const requiredTeams = req.teams;
+                const minPerTeam = req.min;
+                requiredTeams.forEach(teamName => {
+                    // KEY DIFFERENCE: Filter employee pool to only those in the region's countries
+                    const teamStaffPool = appData.employees.filter(e => e.team === teamName && region.countries.includes(e.country));
+                    const totalInTeam = teamStaffPool.length;
+                    let onLeaveCount = 0;
+                    const onLeaveNames = new Set();
+                    teamStaffPool.forEach(emp => {
+                        let isEmployeeOnLeave = false;
+                        const empCountry = emp.country?.toLowerCase();
+                        const onHoliday = leaveEvents.find(leave => (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.countryCode === empCountry && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        const onVacation = leaveEvents.find(leave => leave.extendedProps.type === 'vacation' && leave.extendedProps.employeeName.includes(emp.name) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        if (onVacation) { isEmployeeOnLeave = true; onLeaveNames.add(`${emp.name} (Vacation)`); }
+                        else if (onHoliday) { isEmployeeOnLeave = true; onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`); }
+                        if (isEmployeeOnLeave) onLeaveCount++;
+                    });
+                    const availableCount = totalInTeam - onLeaveCount;
+                    let teamStatus = 'covered';
+                    if (availableCount < minPerTeam) { teamStatus = 'critical'; }
+                    else if (availableCount === minPerTeam) { teamStatus = 'warning'; }
+                    if (teamStatus === 'critical') { worstStatus = 'critical'; }
+                    else if (teamStatus === 'warning' && worstStatus !== 'critical') { worstStatus = 'warning'; }
+                    let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${totalInTeam} (Req: ${minPerTeam})`;
+                    if (teamStatus === 'critical') { teamDetail += ` <strong class="text-danger">(Critical)</strong>`; statusSummary.push(`${teamName}: ${availableCount}/${minPerTeam}`); }
+                    else if (teamStatus === 'warning') { teamDetail += ` <strong class="text-warning">(Warning)</strong>`; statusSummary.push(`${teamName}: ${availableCount}/${minPerTeam}`); }
+                    else { teamDetail += ` (OK)`; }
+                    if (availableCount < totalInTeam || onLeaveNames.size > 0) { impactDetails.push(teamDetail); if (onLeaveNames.size > 0) { impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); } }
+                });
+            });
+            const statusClass = `impact-event impact-${worstStatus}`;
+            // Add "[Region]" to the title to distinguish it on the calendar
+            let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">[Region] ${region.name}</span>`;
+            if (statusSummary.length > 0) { titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`; }
+            const eventData = { title: titleHtml, start: currentDateStr, allDay: true, className: statusClass, description: impactDetails.length > 0 ? impactDetails.join('<br>') : "All teams in this region are fully covered." };
+            impactEvents.push(eventData);
+        });
+
     }
     return impactEvents;
 }
 
+
 // =================================================================================
-// 5. GOOGLE CALENDAR API
+// 5. GOOGLE CALENDAR API (No changes needed in this section)
 // =================================================================================
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
     try {
@@ -335,23 +381,18 @@ async function fetchGoogleCalendarData(fetchInfo) {
     if (gapi.client.getToken() === null) return [];
     const { startStr, endStr } = fetchInfo;
     const promises = [];
-
-    // 1. Fetch from user's selected "Vacation" calendar
     if (vacationCalendarId) {
         promises.push(
             gapi.client.calendar.events.list({ calendarId: vacationCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
             .then(response => ({ response, type: 'vacation' }))
         );
     }
-    // 2. Fetch from user's selected "Official Holiday" calendar
     if (holidayCalendarId) {
         promises.push(
             gapi.client.calendar.events.list({ calendarId: holidayCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
             .then(response => ({ response, type: 'officialHoliday' }))
         );
     }
-    
-    // 3. (Optional but good) Fetch public holidays for each unique EMPLOYEE country
     const employeeCountries = [...new Set(appData.employees.filter(e => e.country).map(e => e.country.toLowerCase()))];
     employeeCountries.forEach(code => {
         const googleCountryCode = mapCountryCode(code);
@@ -363,38 +404,31 @@ async function fetchGoogleCalendarData(fetchInfo) {
             );
         }
     });
-
     const results = await Promise.allSettled(promises);
     let allEvents = [];
     results.forEach(result => {
         if (result.status === 'fulfilled' && !result.value.error) {
             const { response, type, countryCode } = result.value;
             const events = response.result.items || [];
-            
             const mappedEvents = events.map(event => {
-                let eventCountry = countryCode; // Use the country from the promise by default
+                let eventCountry = countryCode;
                 let eventTitle = event.summary;
-                
-                // --- THIS IS THE NEW LOGIC ---
-                // If it's from the Official Holiday calendar, try to parse the country from the title
                 if (type === 'officialHoliday') {
-                    const match = event.summary.match(/^([A-Z]{3})\s*-\s*(.*)$/); // Matches "CHI - Holiday Name"
+                    const match = event.summary.match(/^([A-Z]{3})\s*-\s*(.*)$/);
                     if (match) {
-                        eventCountry = match[1].toLowerCase(); // e.g., 'chi'
-                        eventTitle = match[2]; // e.g., 'San Pedro y San Pablo'
+                        eventCountry = match[1].toLowerCase();
+                        eventTitle = match[2];
                     }
                 }
-
                 return {
-                    title: event.summary, // Keep original summary for display
+                    title: event.summary,
                     start: event.start.date || event.start.dateTime,
                     end: event.end.date || event.end.dateTime,
                     allDay: !!event.start.date,
-                    // display: 'background', // --- REMOVE THIS LINE ---
-                    className: 'leave-event', // --- CHANGE THIS to 'leave-event' ---
+                    className: 'leave-event',
                     extendedProps: {
                         employeeName: type === 'vacation' ? (event.summary.split(':')[1]?.trim() || event.summary) : null,
-                        type: type, // Keep the type for the eventContent renderer
+                        type: type,
                         countryCode: eventCountry,
                         description: eventTitle
                     }
