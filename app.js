@@ -300,9 +300,13 @@ async function fetchGoogleCalendarData(fetchInfo) {
                 let cleanEventTitle = event.summary;
                 let applicableCountries = [];
                 let employeeName = null;
+                
+                // STYLING FIX: Define a specific class for each event type
+                let eventClassName = 'leave-event'; // A generic fallback
                 if (type === 'vacation') {
                     employeeName = event.summary.trim();
                     cleanEventTitle = employeeName;
+                    eventClassName = 'vacation-event'; // Specific class for vacations
                 } else { // Holiday
                     if (countryCode) { applicableCountries.push(countryCode.toLowerCase()); }
                     const titleMatch = event.summary.match(/^([A-Z]{3}(?:\s*,\s*[A-Z]{3})*)\s*-\s*(.*)$/);
@@ -311,13 +315,16 @@ async function fetchGoogleCalendarData(fetchInfo) {
                         const countriesFromTitle = titleMatch[1].split(',').map(c => c.trim().toLowerCase());
                         applicableCountries = [...new Set([...applicableCountries, ...countriesFromTitle])];
                     }
+                    eventClassName = 'holiday-event'; // Specific class for holidays
                 }
+
                 return {
                     title: event.summary,
                     start: event.start.date || event.start.dateTime,
                     end: event.end.date || event.end.dateTime,
                     allDay: !!event.start.date,
-                    className: 'leave-event',
+                    // STYLING FIX: Use the new specific class name
+                    className: eventClassName,
                     extendedProps: { employeeName, type, description: cleanEventTitle, applicableCountries, sortPriority: 1 }
                 };
             });
@@ -326,6 +333,7 @@ async function fetchGoogleCalendarData(fetchInfo) {
     });
     return allEvents;
 }
+
 
 // Google Auth functions
 window.gisLoaded = function() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '', }); gisInited = true; maybeEnableButtons(); };
