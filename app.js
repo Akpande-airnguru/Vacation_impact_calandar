@@ -8,6 +8,7 @@
 let appData = {
     customers: [], // { id, name, country, minEmployees }
     employees: [], // { id, name, team }
+    regions: [],   // { id, name, countries: [], requirements: [{ teams, min }] }
     // Note: Leave data is not stored in appData but fetched live or imported
 };
 
@@ -53,7 +54,6 @@ function loadDataFromLocalStorage() {
         appData = {
             customers: [],
             employees: [],
-            // NEW REGION LOGIC: Ensure 'regions' is part of the default structure
             regions: [], 
             settings: { vacationCalendarId: null, holidayCalendarId: null },
             ...loadedData
@@ -86,14 +86,12 @@ function renderManagementTables() {
 
     const employeeList = appData.employees.map(e => `<li>${e.name} (${e.country}) - Team: ${e.team}</li>`).join('');
     
-    // NEW REGION LOGIC: Create a list to display loaded regions
     const regionList = appData.regions.map(r => {
         const reqs = r.requirements.map(req => `${req.teams.join(', ')}: ${req.min} required`).join('<br>');
         return `<li><strong>Region: ${r.name} (Countries: ${r.countries.join(', ')})</strong><br><small>${reqs}</small></li>`;
     }).join('');
 
     const dataFormsDiv = document.getElementById('data-input-forms');
-    // NEW REGION LOGIC: Add the region list to the display area
     dataFormsDiv.innerHTML = `<div class="card border-0"><div class="card-body p-0">
                                 <h6>Current Customers:</h6><ul class="list-unstyled">${customerList || '<li>None loaded</li>'}</ul>
                                 <h6 class="mt-3">Current Regions:</h6><ul class="list-unstyled">${regionList || '<li>None loaded</li>'}</ul>
@@ -108,7 +106,6 @@ function renderManagementTables() {
 
 function downloadCsvTemplate(event) {
     event.preventDefault();
-    // NEW REGION LOGIC: Add the region example to the downloadable template
     const csvContent = [
         "type,name,country,field_1_condition,field_1_value,field_2_condition,field_2_value",
         "customer,Heron,AUH,required_team,\"product_ASIA,fenix,rudras\",required_employee_per_team,1",
@@ -155,7 +152,6 @@ function processGenericCsvData(data) {
     // Reset data arrays, preserve settings
     appData.customers = [];
     appData.employees = [];
-    // NEW REGION LOGIC: Reset regions array on import
     appData.regions = [];
 
     const generateId = () => Date.now() + Math.random();
@@ -182,7 +178,6 @@ function processGenericCsvData(data) {
                 appData.customers.push(customer);
             }
             customer.requirements.push(requirement);
-        // NEW REGION LOGIC: Handle the 'region' type from the CSV
         } else if (type === 'region') {
             const requirement = {
                 teams: fields.required_team.split(',').map(t => t.trim()),
@@ -193,7 +188,6 @@ function processGenericCsvData(data) {
                 region = { 
                     id: generateId(), 
                     name: row.name, 
-                    // Parse the comma-separated country list into an array
                     countries: row.country.split(',').map(c => c.trim()), 
                     requirements: [] 
                 };
@@ -217,11 +211,12 @@ function initializeCalendar() {
             center: 'title',
             right: 'dayGridMonth,listWeek'
         },
-        dayMaxEvents: true, // Crucial for preventing overlap
+        dayMaxEvents: true,
 
         eventContent: function(arg) {
             let htmlContent = '';
             
+            // This function relies on extendedProps.description being correctly formatted.
             if (arg.event.extendedProps.type) {
                 htmlContent = `<div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>`;
             }
@@ -312,7 +307,7 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
             impactEvents.push(eventData);
         });
 
-        // --- 2. NEW REGION LOGIC: REGION CHECK ---
+        // --- 2. REGION CHECK ---
         appData.regions.forEach(region => {
             let worstStatus = 'covered';
             const impactDetails = [];
@@ -323,7 +318,6 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 const requiredTeams = req.teams;
                 const minPerTeam = req.min;
                 requiredTeams.forEach(teamName => {
-                    // KEY DIFFERENCE: Filter employee pool to only those in the region's countries
                     const teamStaffPool = appData.employees.filter(e => e.team === teamName && region.countries.includes(e.country));
                     const totalInTeam = teamStaffPool.length;
                     let onLeaveCount = 0;
@@ -351,7 +345,6 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 });
             });
             const statusClass = `impact-event impact-${worstStatus}`;
-            // Add "[Region]" to the title to distinguish it on the calendar
             let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">[Region] ${region.name}</span>`;
             if (statusSummary.length > 0) { titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`; }
             const eventData = { title: titleHtml, start: currentDateStr, allDay: true, className: statusClass, description: impactDetails.length > 0 ? impactDetails.join('<br>') : "All teams in this region are fully covered." };
@@ -364,7 +357,7 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
 
 
 // =================================================================================
-// 5. GOOGLE CALENDAR API (No changes needed in this section)
+// 5. GOOGLE CALENDAR API
 // =================================================================================
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
     try {
@@ -410,18 +403,31 @@ async function fetchGoogleCalendarData(fetchInfo) {
         if (result.status === 'fulfilled' && !result.value.error) {
             const { response, type, countryCode } = result.value;
             const events = response.result.items || [];
+            
+            // ================== MODIFICATION START ==================
+            // This entire mapping function is updated to properly format the description.
             const mappedEvents = events.map(event => {
-                let eventCountry = countryCode;
+                let eventCountry = countryCode; // Use the country from the promise by default
                 let eventTitle = event.summary;
+                
+                // For the "Official Holiday" calendar, parse the country from the title like "CHI - Holiday Name"
                 if (type === 'officialHoliday') {
                     const match = event.summary.match(/^([A-Z]{3})\s*-\s*(.*)$/);
                     if (match) {
-                        eventCountry = match[1].toLowerCase();
-                        eventTitle = match[2];
+                        eventCountry = match[1].toLowerCase(); // e.g., 'chi'
+                        eventTitle = match[2];               // e.g., 'San Pedro y San Pablo'
                     }
                 }
+
+                // --- THIS IS THE KEY FIX ---
+                // Create a display-ready description. For holidays, prepend the country code.
+                let displayDescription = eventTitle; // Default to the parsed title
+                if ((type === 'officialHoliday' || type === 'publicHoliday') && eventCountry) {
+                    displayDescription = `${eventCountry.toUpperCase()} - ${eventTitle}`;
+                }
+
                 return {
-                    title: event.summary,
+                    title: event.summary, // Keep original summary for raw data
                     start: event.start.date || event.start.dateTime,
                     end: event.end.date || event.end.dateTime,
                     allDay: !!event.start.date,
@@ -430,10 +436,13 @@ async function fetchGoogleCalendarData(fetchInfo) {
                         employeeName: type === 'vacation' ? (event.summary.split(':')[1]?.trim() || event.summary) : null,
                         type: type,
                         countryCode: eventCountry,
-                        description: eventTitle
+                        // Use the newly formatted description for display purposes
+                        description: displayDescription 
                     }
                 };
             });
+            // =================== MODIFICATION END ===================
+
             allEvents = allEvents.concat(mappedEvents);
         } else if (result.status === 'rejected') {
             console.error("Failed to fetch calendar:", result.reason);
