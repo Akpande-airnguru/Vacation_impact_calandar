@@ -186,11 +186,52 @@ function initializeCalendar() {
             return { html: htmlContent };
         },
         eventDidMount: function(info) {
-            document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
-            if (info.event.extendedProps.description) {
-                new bootstrap.Tooltip(info.el, { title: info.event.extendedProps.description, placement: 'top', trigger: 'hover', container: 'body', html: true });
-            }
-        },
+    // Tooltip setup (unchanged)
+    document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
+    if (info.event.extendedProps.description) {
+        new bootstrap.Tooltip(info.el, {
+            title: info.event.extendedProps.description,
+            placement: 'top',
+            trigger: 'hover',
+            container: 'body',
+            html: true
+        });
+    }
+
+    // 🧠 PRIORITY-BASED RENDER FIX
+    const priorityMap = {
+        'impact-critical': 3,
+        'impact-warning': 2,
+        'impact-covered': 1,
+        'vacation-event': 0,
+        'holiday-event': 0,
+        'leave-event': 0
+    };
+
+    const el = info.el;
+    const classList = el.classList;
+
+    let priority = 0;
+    for (const cls of classList) {
+        if (priorityMap.hasOwnProperty(cls)) {
+            priority = priorityMap[cls];
+            break;
+        }
+    }
+
+    el.setAttribute('data-sort-priority', priority);
+
+    const parent = el.parentNode;
+    if (parent) {
+        const children = Array.from(parent.children);
+        const sorted = children.sort((a, b) => {
+            const aP = parseInt(a.getAttribute('data-sort-priority') || 0, 10);
+            const bP = parseInt(b.getAttribute('data-sort-priority') || 0, 10);
+            return bP - aP; // Descending priority
+        });
+        sorted.forEach(child => parent.appendChild(child));
+    }
+},
         listDayFormat: { month: 'long', day: 'numeric', year: 'numeric', weekday: 'long' },
         buttonText: { listWeek: 'week', dayGridMonth: 'month' },
         noEventsContent: 'All customers are fully covered for this period.',
