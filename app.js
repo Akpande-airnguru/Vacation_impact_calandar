@@ -158,30 +158,23 @@ function initializeCalendar() {
         initialView: 'dayGridMonth',
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
 
-        // ADVANCED SORTING: Update dayMaxEvents to a function.
-        // This tells FullCalendar to calculate the number of slots dynamically,
-        // which is necessary when some events are pinned open with 'display: block'.
-        dayMaxEvents: function(arg) {
-            // This is a reasonable starting point. It might need tweaking
-            // depending on your average number of critical events per day.
-            // Returning 'true' would revert to automatic height.
-            return 4; 
-        },
+        // This allows FullCalendar to automatically handle the "+n more" link,
+        // which is necessary when using `display: 'block'` for some events.
+        dayMaxEvents: true,
 
-        // The eventOrder property uses the new detailed sortPriority values.
-        eventOrder: 'extendedProps.sortPriority desc,extendedProps.titleText',
+        // SORTING FIX: Remove 'desc' to sort in ascending order (low numbers first).
+        // This is the only line that needs to be changed in this function.
+        eventOrder: 'extendedProps.sortPriority,extendedProps.titleText',
 
         eventContent: function(arg) {
             let htmlContent = '';
+            // For leave/holiday events, show the description (which includes country codes).
             if (arg.event.extendedProps.type) {
                 htmlContent = `<div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>`;
             } else {
-                if (arg.view.type === 'dayGridMonth') {
-                    const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
-                    htmlContent = `<div class="fc-event-title">${mainTitleMatch ? mainTitleMatch[1] : 'Event'}</div>`;
-                } else {
-                    htmlContent = arg.event.title;
-                }
+                // For impact events, use the rich HTML from the title property.
+                // This ensures our custom-styled spans and details show up correctly in all views.
+                htmlContent = arg.event.title;
             }
             return { html: htmlContent };
         },
