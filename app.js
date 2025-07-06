@@ -154,58 +154,47 @@ function processGenericCsvData(data) {
 
 function initializeCalendar() {
     const calendarEl = document.getElementById('calendar');
-
     calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
-        headerToolbar: {
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,listWeek'
+        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
+
+        // ADVANCED SORTING: Update dayMaxEvents to a function.
+        // This tells FullCalendar to calculate the number of slots dynamically,
+        // which is necessary when some events are pinned open with 'display: block'.
+        dayMaxEvents: function(arg) {
+            // This is a reasonable starting point. It might need tweaking
+            // depending on your average number of critical events per day.
+            // Returning 'true' would revert to automatic height.
+            return 4; 
         },
 
-        // This allows FullCalendar to automatically handle the "+n more" link.
-        // It's necessary when using display: 'block' for some events.
-        dayMaxEvents: true,
-
-        // SORTING FIX: Use ascending order (low numbers first)
-        // We will adjust the priority numbers to match this.
-        eventOrder: 'extendedProps.sortPriority,extendedProps.titleText',
+        // The eventOrder property uses the new detailed sortPriority values.
+        eventOrder: 'extendedProps.sortPriority desc,extendedProps.titleText',
 
         eventContent: function(arg) {
             let htmlContent = '';
-
-            // This logic is simplified for clarity and to avoid issues
             if (arg.event.extendedProps.type) {
-                // This is a leave/holiday event
                 htmlContent = `<div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>`;
             } else {
-                 // This is an impact event, use the rich HTML from the title
-                 // This ensures the color-coded spans and details appear in list view.
-                 htmlContent = arg.event.title;
+                if (arg.view.type === 'dayGridMonth') {
+                    const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
+                    htmlContent = `<div class="fc-event-title">${mainTitleMatch ? mainTitleMatch[1] : 'Event'}</div>`;
+                } else {
+                    htmlContent = arg.event.title;
+                }
             }
-
             return { html: htmlContent };
         },
-
         eventDidMount: function(info) {
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
-
             if (info.event.extendedProps.description) {
-                new bootstrap.Tooltip(info.el, {
-                    title: info.event.extendedProps.description,
-                    placement: 'top',
-                    trigger: 'hover',
-                    container: 'body',
-                    html: true
-                });
+                new bootstrap.Tooltip(info.el, { title: info.event.extendedProps.description, placement: 'top', trigger: 'hover', container: 'body', html: true });
             }
         },
-
         listDayFormat: { month: 'long', day: 'numeric', year: 'numeric', weekday: 'long' },
         buttonText: { listWeek: 'week', dayGridMonth: 'month' },
-        noEventsContent: 'All customers are fully covered for this period.'
+        noEventsContent: 'All customers are fully covered for this period.',
     });
-
     calendar.setOption('events', fetchCalendarEvents);
     calendar.render();
 }
@@ -227,17 +216,29 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     const staffPool = isRegion
                         ? appData.employees.filter(e => e.team === teamName && entity.countries.includes(e.country))
                         : appData.employees.filter(e => e.team === teamName);
+
                     let onLeaveCount = 0;
                     const onLeaveNames = new Set();
+
                     staffPool.forEach(emp => {
                         let isEmployeeOnLeave = false;
-                        const onHoliday = leaveEvents.find(leave => (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) && currentDateStr >= leave.start && currentDateStr < (leave.end || new Date(new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+
+                        const onHoliday = leaveEvents.find(leave =>
+                            (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') &&
+                            leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) &&
+                            currentDateStr >= leave.start &&
+                            currentDateStr < (leave.end || new Date(new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
+                        );
+
                         const onVacation = leaveEvents.find(leave => {
                             if (leave.extendedProps.type !== 'vacation') return false;
                             const vacationTitle = leave.extendedProps.employeeName;
                             if (!vacationTitle || !emp.name) return false;
+
                             if (vacationTitle.toLowerCase().includes(emp.name.toLowerCase())) {
-                                const matchingEmployees = appData.employees.filter(e => vacationTitle.toLowerCase().includes(e.name.toLowerCase()));
+                                const matchingEmployees = appData.employees.filter(e =>
+                                    vacationTitle.toLowerCase().includes(e.name.toLowerCase())
+                                );
                                 if (matchingEmployees.length > 1) {
                                     console.warn(`AMBIGUOUS VACATION: Event "${vacationTitle}" could apply to multiple employees: ${matchingEmployees.map(e => e.name).join(', ')}. Matching with ${emp.name}.`);
                                 }
@@ -246,28 +247,39 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                             return false;
                         });
 
-                        if (onVacation && currentDateStr >= onVacation.start && currentDateStr < (onVacation.end || new Date(new Date(onVacation.start).setDate(new Date(onVacation.start).getDate() + 1)).toISOString().split('T')[0])) {
+                        if (
+                            onVacation &&
+                            currentDateStr >= onVacation.start &&
+                            currentDateStr < (onVacation.end || new Date(new Date(onVacation.start).setDate(new Date(onVacation.start).getDate() + 1)).toISOString().split('T')[0])
+                        ) {
                             isEmployeeOnLeave = true;
                             onLeaveNames.add(`${emp.name} (Vacation)`);
                         } else if (onHoliday) {
                             isEmployeeOnLeave = true;
                             onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`);
                         }
+
                         if (isEmployeeOnLeave) onLeaveCount++;
                     });
+
                     const availableCount = staffPool.length - onLeaveCount;
                     let teamStatus = 'covered';
+
                     if (availableCount < req.min) teamStatus = 'critical';
                     else if (availableCount === req.min) teamStatus = 'warning';
+
                     if (teamStatus === 'critical') worstStatus = 'critical';
                     else if (teamStatus === 'warning' && worstStatus !== 'critical') worstStatus = 'warning';
+
                     let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${staffPool.length} (Req: ${req.min})`;
+
                     if (teamStatus !== 'covered') {
                         statusSummary.push(`${teamName}: ${availableCount}/${req.min}`);
                         teamDetail += ` <strong class="text-${teamStatus === 'critical' ? 'danger' : 'warning'}">(${teamStatus.charAt(0).toUpperCase() + teamStatus.slice(1)})</strong>`;
                     } else {
                         teamDetail += ` (OK)`;
                     }
+
                     if (teamStatus !== 'covered' || onLeaveNames.size > 0) {
                         impactDetails.push(teamDetail);
                         if (onLeaveNames.size > 0) {
@@ -277,7 +289,7 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 });
             });
 
-            // SORTING FIX: Use low numbers for high priority (ascending sort)
+            // Sorting Priority Map
             const sortPriorityMap = {
                 critical_region: 10,
                 critical_customer: 20,
@@ -293,13 +305,15 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
 
             const plainTitle = isRegion ? `[Region] ${entity.name}` : entity.name;
             const statusClass = `impact-event impact-${worstStatus}`;
-            let titleHtml = `<span class="fc-event-title-main class="impact-${worstStatus}">${plainTitle}</span>`;
+            let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${plainTitle}</span>`;
 
             if (statusSummary.length > 0) {
                 titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
             }
 
-            const description = impactDetails.length > 0 ? impactDetails.join('<br>') : `All teams are fully covered.`;
+            const description = impactDetails.length > 0
+                ? impactDetails.join('<br>')
+                : `All teams are fully covered.`;
 
             const eventData = {
                 title: titleHtml,
@@ -309,11 +323,10 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 extendedProps: {
                     description,
                     sortPriority,
-                    titleText: plainTitle // Use plain text for secondary sort
+                    titleText: plainTitle
                 }
             };
-            
-            // Re-enable this to prevent critical events from collapsing
+
             if (worstStatus === 'critical') {
                 eventData.display = 'block';
             }
@@ -327,6 +340,7 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
 
     return impactEvents;
 }
+
 
 // =================================================================================
 // 5. GOOGLE CALENDAR API
