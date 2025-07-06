@@ -268,3 +268,20 @@ body {
 .fc-daygrid-event.impact-covered   { z-index: 40 !important; }  /* green  – bottom */
 .fc-daygrid-event.vacation-event,
 .fc-daygrid-event.holiday-event    { z-index: 10 !important; }  /* leave  – lowest */
+
+/* In list view, we don't want a background color, just colored text */
+.fc-list-event.vacation-event,
+.fc-list-event.holiday-event {
+    background-color: transparent !important;
+    border: none;
+}
+
+/* Style the text color for vacation events in the list */
+.fc-list-event.vacation-event .fc-event-title {
+    color: var(--vacation-text-color) !important;
+}
+
+/* Style the text color for holiday events in the list */
+.fc-list-event.holiday-event .fc-event-title {
+    color: var(--holiday-text-color) !important;
+}
