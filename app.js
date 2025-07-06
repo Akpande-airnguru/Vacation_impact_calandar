@@ -100,7 +100,6 @@ function handleCsvImport(event) {
         Papa.parse(file, {
             header: true, 
             skipEmptyLines: true,
-            // THIS IS THE CRITICAL LINE THAT FIXES THE 'ó' CHARACTER
             encoding: "UTF-8",
             complete: (results) => {
                 processGenericCsvData(results.data);
@@ -160,8 +159,31 @@ function initializeCalendar() {
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
         dayMaxEvents: true,
         eventOrder: 'extendedProps.sortPriority,title',
-        eventContent: function(arg) { /* ... unchanged ... */ return { html: '...' } },
-        eventDidMount: function(info) { /* ... unchanged ... */ },
+        
+        // FIX: The complete, correct code for this function is restored.
+        eventContent: function(arg) {
+            let htmlContent = '';
+            if (arg.event.extendedProps.type) {
+                htmlContent = `<div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>`;
+            } else {
+                if (arg.view.type === 'dayGridMonth') {
+                    const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
+                    htmlContent = `<div class="fc-event-title">${mainTitleMatch ? mainTitleMatch[1] : 'Event'}</div>`;
+                } else {
+                    htmlContent = arg.event.title;
+                }
+            }
+            return { html: htmlContent };
+        },
+
+        // FIX: The complete, correct code for this function is restored.
+        eventDidMount: function(info) {
+            document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
+            if (info.event.extendedProps.description) {
+                new bootstrap.Tooltip(info.el, { title: info.event.extendedProps.description, placement: 'top', trigger: 'hover', container: 'body', html: true });
+            }
+        },
+        
         listDayFormat: { month: 'long', day: 'numeric', year: 'numeric', weekday: 'long' },
         buttonText: { listWeek: 'week', dayGridMonth: 'month' },
         noEventsContent: 'All customers are fully covered for this period.',
@@ -189,7 +211,6 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     staffPool.forEach(emp => {
                         let isEmployeeOnLeave = false;
                         const onHoliday = leaveEvents.find(leave => (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
-                        
                         const onVacation = leaveEvents.find(leave => {
                             if (leave.extendedProps.type !== 'vacation') return false;
                             const vacationTitle = leave.extendedProps.employeeName;
