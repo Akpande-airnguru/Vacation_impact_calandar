@@ -49,8 +49,6 @@ function loadDataFromLocalStorage() {
     const savedData = localStorage.getItem('resourcePlannerData');
     if (savedData) {
         const loadedData = JSON.parse(savedData);
-        
-        // Robustly load data, ensuring all keys exist.
         appData = {
             customers: [],
             employees: [],
@@ -152,25 +150,14 @@ function processGenericCsvData(data) {
     appData.customers = [];
     appData.employees = [];
     appData.regions = [];
-
     const generateId = () => Date.now() + Math.random();
-
     data.forEach(row => {
         const type = row.type?.toLowerCase().trim();
         const fields = parseGenericFields(row);
-
         if (type === 'employee') {
-            appData.employees.push({
-                id: generateId(),
-                name: row.name,
-                country: row.country,
-                team: fields.team
-            });
+            appData.employees.push({ id: generateId(), name: row.name, country: row.country, team: fields.team });
         } else if (type === 'customer') {
-            const requirement = {
-                teams: fields.required_team.split(',').map(t => t.trim()),
-                min: parseInt(fields.required_employee_per_team, 10)
-            };
+            const requirement = { teams: fields.required_team.split(',').map(t => t.trim()), min: parseInt(fields.required_employee_per_team, 10) };
             let customer = appData.customers.find(c => c.name === row.name);
             if (!customer) {
                 customer = { id: generateId(), name: row.name, country: row.country, requirements: [] };
@@ -178,18 +165,10 @@ function processGenericCsvData(data) {
             }
             customer.requirements.push(requirement);
         } else if (type === 'region') {
-            const requirement = {
-                teams: fields.required_team.split(',').map(t => t.trim()),
-                min: parseInt(fields.required_employee_per_team, 10)
-            };
+            const requirement = { teams: fields.required_team.split(',').map(t => t.trim()), min: parseInt(fields.required_employee_per_team, 10) };
             let region = appData.regions.find(r => r.name === row.name);
             if (!region) {
-                region = { 
-                    id: generateId(), 
-                    name: row.name, 
-                    countries: row.country.split(',').map(c => c.trim()), 
-                    requirements: [] 
-                };
+                region = { id: generateId(), name: row.name, countries: row.country.split(',').map(c => c.trim()), requirements: [] };
                 appData.regions.push(region);
             }
             region.requirements.push(requirement);
@@ -205,53 +184,33 @@ function initializeCalendar() {
     const calendarEl = document.getElementById('calendar');
     calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
-        headerToolbar: {
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,listWeek'
-        },
+        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
         dayMaxEvents: true,
-
-        // SORTING FIX: Add eventOrder to sort by our custom priority field first, then alphabetically by title.
         eventOrder: 'extendedProps.sortPriority,title',
-
         eventContent: function(arg) {
             let htmlContent = '';
-            
             if (arg.event.extendedProps.type) {
                 htmlContent = `<div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>`;
-            }
-            else {
+            } else {
                 if (arg.view.type === 'dayGridMonth') {
                     const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
-                    const customerName = mainTitleMatch ? mainTitleMatch[1] : 'Event';
-                    htmlContent = `<div class="fc-event-title">${customerName}</div>`;
+                    htmlContent = `<div class="fc-event-title">${mainTitleMatch ? mainTitleMatch[1] : 'Event'}</div>`;
                 } else {
                     htmlContent = arg.event.title;
                 }
             }
             return { html: htmlContent };
         },
-
         eventDidMount: function(info) {
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
-            // This now works for ALL events because the description is consistently in extendedProps.
             if (info.event.extendedProps.description) {
-                new bootstrap.Tooltip(info.el, {
-                    title: info.event.extendedProps.description,
-                    placement: 'top',
-                    trigger: 'hover',
-                    container: 'body',
-                    html: true
-                });
+                new bootstrap.Tooltip(info.el, { title: info.event.extendedProps.description, placement: 'top', trigger: 'hover', container: 'body', html: true });
             }
         },
-        
         listDayFormat: { month: 'long', day: 'numeric', year: 'numeric', weekday: 'long' },
         buttonText: { listWeek: 'week', dayGridMonth: 'month' },
         noEventsContent: 'All customers are fully covered for this period.',
     });
-    
     calendar.setOption('events', fetchCalendarEvents);
     calendar.render();
 }
@@ -262,121 +221,76 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
     for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
         const currentDateStr = day.toISOString().split('T')[0];
 
-        // --- 1. CUSTOMER CHECK ---
-        appData.customers.forEach(customer => {
-            // ... (inner logic for calculating status is unchanged) ...
+        // --- CUSTOMER & REGION CHECKS ---
+        const checkEntity = (entity, isRegion = false) => {
             let worstStatus = 'covered';
             const impactDetails = [];
             const statusSummary = [];
-            if (!customer.requirements || customer.requirements.length === 0) {
-                 const titleHtml = `<span class="fc-event-title-main impact-covered">${customer.name}</span>`;
-                // SORTING FIX: Add extendedProps with description and sortPriority
+            if (!entity.requirements || entity.requirements.length === 0) {
+                const title = isRegion ? `[Region] ${entity.name}` : entity.name;
+                const titleHtml = `<span class="fc-event-title-main impact-covered">${title}</span>`;
                 impactEvents.push({ title: titleHtml, start: currentDateStr, allDay: true, className: 'impact-covered', extendedProps: { description: 'No staffing requirements defined.', sortPriority: 2 } });
                 return;
             }
-            customer.requirements.forEach(req => {
-                const requiredTeams = req.teams;
-                const minPerTeam = req.min;
-                requiredTeams.forEach(teamName => {
-                    const teamStaffPool = appData.employees.filter(e => e.team === teamName);
-                    const totalInTeam = teamStaffPool.length;
+            entity.requirements.forEach(req => {
+                req.teams.forEach(teamName => {
+                    const staffPool = isRegion 
+                        ? appData.employees.filter(e => e.team === teamName && entity.countries.includes(e.country))
+                        : appData.employees.filter(e => e.team === teamName);
+                    
                     let onLeaveCount = 0;
                     const onLeaveNames = new Set();
-                    teamStaffPool.forEach(emp => {
-                        let isEmployeeOnLeave = false;
+                    
+                    staffPool.forEach(emp => {
                         const empCountry = emp.country?.toLowerCase();
-                        const onHoliday = leaveEvents.find(leave => (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.countryCode === empCountry && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
-                        const onVacation = leaveEvents.find(leave => leave.extendedProps.type === 'vacation' && leave.extendedProps.employeeName.includes(emp.name) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        let isEmployeeOnLeave = false;
+                        
+                        // PARSING FIX: Check if employee is on holiday by looking at the holiday's applicable countries array.
+                        const onHoliday = leaveEvents.find(leave =>
+                            (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') &&
+                            leave.extendedProps.applicableCountries.includes(empCountry) && // <-- THE CRITICAL CHANGE IS HERE
+                            currentDateStr >= leave.start &&
+                            currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
+                        );
+                        
+                        const onVacation = leaveEvents.find(leave => 
+                            leave.extendedProps.type === 'vacation' && 
+                            leave.extendedProps.employeeName.includes(emp.name) && 
+                            currentDateStr >= leave.start && 
+                            currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
+                        );
+
                         if (onVacation) { isEmployeeOnLeave = true; onLeaveNames.add(`${emp.name} (Vacation)`); }
                         else if (onHoliday) { isEmployeeOnLeave = true; onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`); }
+                        
                         if(isEmployeeOnLeave) onLeaveCount++;
                     });
-                    const availableCount = totalInTeam - onLeaveCount;
+                    
+                    const availableCount = staffPool.length - onLeaveCount;
                     let teamStatus = 'covered';
-                    if (availableCount < minPerTeam) { teamStatus = 'critical'; }
-                    else if (availableCount === minPerTeam) { teamStatus = 'warning'; }
-                    if (teamStatus === 'critical') { worstStatus = 'critical'; }
-                    else if (teamStatus === 'warning' && worstStatus !== 'critical') { worstStatus = 'warning'; }
-                    let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${totalInTeam} (Req: ${minPerTeam})`;
-                    if (teamStatus === 'critical') { teamDetail += ` <strong class="text-danger">(Critical)</strong>`; statusSummary.push(`${teamName}: ${availableCount}/${minPerTeam}`); }
-                    else if (teamStatus === 'warning') { teamDetail += ` <strong class="text-warning">(Warning)</strong>`; statusSummary.push(`${teamName}: ${availableCount}/${minPerTeam}`); }
+                    if (availableCount < req.min) teamStatus = 'critical';
+                    else if (availableCount === req.min) teamStatus = 'warning';
+                    
+                    if (teamStatus === 'critical') worstStatus = 'critical';
+                    else if (teamStatus === 'warning' && worstStatus !== 'critical') worstStatus = 'warning';
+                    
+                    let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${staffPool.length} (Req: ${req.min})`;
+                    if (teamStatus === 'critical') { teamDetail += ` <strong class="text-danger">(Critical)</strong>`; statusSummary.push(`${teamName}: ${availableCount}/${req.min}`); }
+                    else if (teamStatus === 'warning') { teamDetail += ` <strong class="text-warning">(Warning)</strong>`; statusSummary.push(`${teamName}: ${availableCount}/${req.min}`); }
                     else { teamDetail += ` (OK)`; }
-                    if (availableCount < totalInTeam || onLeaveNames.size > 0) { impactDetails.push(teamDetail); if (onLeaveNames.size > 0) { impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); } }
+                    if (availableCount < staffPool.length || onLeaveNames.size > 0) { impactDetails.push(teamDetail); if (onLeaveNames.size > 0) { impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); } }
                 });
             });
+            const title = isRegion ? `[Region] ${entity.name}` : entity.name;
             const statusClass = `impact-event impact-${worstStatus}`;
-            let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${customer.name}</span>`;
-            if (statusSummary.length > 0) { titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`; }
-            
-            // SORTING FIX: Move description into extendedProps and add sortPriority.
-            const eventData = {
-                title: titleHtml,
-                start: currentDateStr,
-                allDay: true,
-                className: statusClass,
-                extendedProps: {
-                    description: impactDetails.length > 0 ? impactDetails.join('<br>') : "All teams are fully covered.",
-                    sortPriority: 2
-                }
-            };
-            impactEvents.push(eventData);
-        });
+            let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${title}</span>`;
+            if (statusSummary.length > 0) titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
+            const description = impactDetails.length > 0 ? impactDetails.join('<br>') : `All teams are fully covered.`;
+            impactEvents.push({ title: titleHtml, start: currentDateStr, allDay: true, className: statusClass, extendedProps: { description, sortPriority: 2 } });
+        };
 
-        // --- 2. REGION CHECK ---
-        appData.regions.forEach(region => {
-            // ... (inner logic for calculating status is unchanged) ...
-            let worstStatus = 'covered';
-            const impactDetails = [];
-            const statusSummary = [];
-            if (!region.requirements || region.requirements.length === 0) return;
-            region.requirements.forEach(req => {
-                const requiredTeams = req.teams;
-                const minPerTeam = req.min;
-                requiredTeams.forEach(teamName => {
-                    const teamStaffPool = appData.employees.filter(e => e.team === teamName && region.countries.includes(e.country));
-                    const totalInTeam = teamStaffPool.length;
-                    let onLeaveCount = 0;
-                    const onLeaveNames = new Set();
-                    teamStaffPool.forEach(emp => {
-                        let isEmployeeOnLeave = false;
-                        const empCountry = emp.country?.toLowerCase();
-                        const onHoliday = leaveEvents.find(leave => (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.countryCode === empCountry && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
-                        const onVacation = leaveEvents.find(leave => leave.extendedProps.type === 'vacation' && leave.extendedProps.employeeName.includes(emp.name) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
-                        if (onVacation) { isEmployeeOnLeave = true; onLeaveNames.add(`${emp.name} (Vacation)`); }
-                        else if (onHoliday) { isEmployeeOnLeave = true; onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`); }
-                        if (isEmployeeOnLeave) onLeaveCount++;
-                    });
-                    const availableCount = totalInTeam - onLeaveCount;
-                    let teamStatus = 'covered';
-                    if (availableCount < minPerTeam) { teamStatus = 'critical'; }
-                    else if (availableCount === minPerTeam) { teamStatus = 'warning'; }
-                    if (teamStatus === 'critical') { worstStatus = 'critical'; }
-                    else if (teamStatus === 'warning' && worstStatus !== 'critical') { worstStatus = 'warning'; }
-                    let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${totalInTeam} (Req: ${minPerTeam})`;
-                    if (teamStatus === 'critical') { teamDetail += ` <strong class="text-danger">(Critical)</strong>`; statusSummary.push(`${teamName}: ${availableCount}/${minPerTeam}`); }
-                    else if (teamStatus === 'warning') { teamDetail += ` <strong class="text-warning">(Warning)</strong>`; statusSummary.push(`${teamName}: ${availableCount}/${minPerTeam}`); }
-                    else { teamDetail += ` (OK)`; }
-                    if (availableCount < totalInTeam || onLeaveNames.size > 0) { impactDetails.push(teamDetail); if (onLeaveNames.size > 0) { impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); } }
-                });
-            });
-            const statusClass = `impact-event impact-${worstStatus}`;
-            let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">[Region] ${region.name}</span>`;
-            if (statusSummary.length > 0) { titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`; }
-            
-            // SORTING FIX: Move description into extendedProps and add sortPriority.
-            const eventData = {
-                title: titleHtml,
-                start: currentDateStr,
-                allDay: true,
-                className: statusClass,
-                extendedProps: {
-                    description: impactDetails.length > 0 ? impactDetails.join('<br>') : "All teams in this region are fully covered.",
-                    sortPriority: 2
-                }
-            };
-            impactEvents.push(eventData);
-        });
-
+        appData.customers.forEach(customer => checkEntity(customer, false));
+        appData.regions.forEach(region => checkEntity(region, true));
     }
     return impactEvents;
 }
@@ -399,52 +313,46 @@ async function fetchGoogleCalendarData(fetchInfo) {
     const { vacationCalendarId, holidayCalendarId } = appData.settings;
     if (gapi.client.getToken() === null) return [];
     const { startStr, endStr } = fetchInfo;
+    
+    // For single-country calendars (like en.indian#holiday), we need to know which country it belongs to.
+    const employeeCountryCalendars = [...new Set(appData.employees.filter(e => e.country).map(e => e.country.toLowerCase()))]
+        .map(code => ({ calendarId: `en.${code}#holiday@group.v.calendar.google.com`, countryCode: code }));
+
     const promises = [];
     if (vacationCalendarId) {
-        promises.push(
-            gapi.client.calendar.events.list({ calendarId: vacationCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
-            .then(response => ({ response, type: 'vacation' }))
-        );
+        promises.push(gapi.client.calendar.events.list({ calendarId: vacationCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'vacation' })));
     }
     if (holidayCalendarId) {
-        promises.push(
-            gapi.client.calendar.events.list({ calendarId: holidayCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
-            .then(response => ({ response, type: 'officialHoliday' }))
-        );
+        promises.push(gapi.client.calendar.events.list({ calendarId: holidayCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'officialHoliday' })));
     }
-    const employeeCountries = [...new Set(appData.employees.filter(e => e.country).map(e => e.country.toLowerCase()))];
-    employeeCountries.forEach(code => {
-        const googleCountryCode = mapCountryCode(code);
-        if (googleCountryCode) {
-            promises.push(
-                gapi.client.calendar.events.list({ calendarId: `en.${googleCountryCode}#holiday@group.v.calendar.google.com`, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' })
-                .then(response => ({ response, type: 'publicHoliday', countryCode: code }))
-                .catch(error => ({ error, countryCode: code }))
-            );
-        }
+    employeeCountryCalendars.forEach(cal => {
+        promises.push(gapi.client.calendar.events.list({ calendarId: cal.calendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'publicHoliday', countryCode: cal.countryCode })).catch(() => null));
     });
+
     const results = await Promise.allSettled(promises);
     let allEvents = [];
     results.forEach(result => {
-        if (result.status === 'fulfilled' && !result.value.error) {
+        if (result.status === 'fulfilled' && result.value) {
             const { response, type, countryCode } = result.value;
             const events = response.result.items || [];
             
             const mappedEvents = events.map(event => {
-                let eventCountry = countryCode;
-                let eventTitle = event.summary;
-                
-                if (type === 'officialHoliday') {
-                    const match = event.summary.match(/^([A-Z]{3})\s*-\s*(.*)$/);
-                    if (match) {
-                        eventCountry = match[1].toLowerCase();
-                        eventTitle = match[2];
-                    }
+                let cleanEventTitle = event.summary;
+                // PARSING FIX: applicableCountries will store all countries this holiday affects.
+                let applicableCountries = [];
+
+                // If the event came from a single-country calendar (e.g., en.indian), we know its country context.
+                if (countryCode) {
+                    applicableCountries.push(countryCode.toLowerCase());
                 }
 
-                let displayDescription = eventTitle;
-                if ((type === 'officialHoliday' || type === 'publicHoliday') && eventCountry) {
-                    displayDescription = `${eventCountry.toUpperCase()} - ${eventTitle}`;
+                // Now, try to parse countries from the event title itself, e.g., "CHI, ESP - Holiday Name"
+                const titleMatch = event.summary.match(/^([A-Z]{3}(?:\s*,\s*[A-Z]{3})*)\s*-\s*(.*)$/);
+                if (titleMatch) {
+                    cleanEventTitle = titleMatch[2]; // The part after the hyphen is the clean title.
+                    const countriesFromTitle = titleMatch[1].split(',').map(c => c.trim().toLowerCase());
+                    // Merge with existing countries and remove duplicates.
+                    applicableCountries = [...new Set([...applicableCountries, ...countriesFromTitle])];
                 }
 
                 return {
@@ -456,21 +364,18 @@ async function fetchGoogleCalendarData(fetchInfo) {
                     extendedProps: {
                         employeeName: type === 'vacation' ? (event.summary.split(':')[1]?.trim() || event.summary) : null,
                         type: type,
-                        countryCode: eventCountry,
-                        description: displayDescription,
-                        // SORTING FIX: Add sortPriority for leave events.
+                        description: cleanEventTitle,
+                        applicableCountries: applicableCountries, // Use the new array of countries.
                         sortPriority: 1
                     }
                 };
             });
             allEvents = allEvents.concat(mappedEvents);
-        } else if (result.status === 'rejected') {
-            console.error("Failed to fetch calendar:", result.reason);
         }
     });
     return allEvents;
 }
-function mapCountryCode(code) { const map = { 'usa': 'usa', 'pol': 'polish', 'auh': 'ae', 'qar': 'qa.qatari', 'bru': 'be.belgian', 'spa': 'spain', 'ind': 'indian' }; return map[code]; }
+// PARSING FIX: The mapCountryCode function is no longer needed and has been removed.
 window.gisLoaded = function() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '', }); gisInited = true; maybeEnableButtons(); };
 async function initializeGapiClient() { try { await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS }); gapiInited = true; maybeEnableButtons(); if (gapi.client.getToken()) { populateCalendarSelectors(); } } catch (e) { console.error("Error initializing GAPI client:", e); } }
 function maybeEnableButtons() { if (gapiInited && gisInited) { document.getElementById('authorize_button').style.visibility = 'visible'; } }
