@@ -159,8 +159,6 @@ function initializeCalendar() {
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
         dayMaxEvents: true,
         eventOrder: 'extendedProps.sortPriority,title',
-        
-        // FIX: The complete, correct code for this function is restored.
         eventContent: function(arg) {
             let htmlContent = '';
             if (arg.event.extendedProps.type) {
@@ -175,15 +173,12 @@ function initializeCalendar() {
             }
             return { html: htmlContent };
         },
-
-        // FIX: The complete, correct code for this function is restored.
         eventDidMount: function(info) {
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
             if (info.event.extendedProps.description) {
                 new bootstrap.Tooltip(info.el, { title: info.event.extendedProps.description, placement: 'top', trigger: 'hover', container: 'body', html: true });
             }
         },
-        
         listDayFormat: { month: 'long', day: 'numeric', year: 'numeric', weekday: 'long' },
         buttonText: { listWeek: 'week', dayGridMonth: 'month' },
         noEventsContent: 'All customers are fully covered for this period.',
@@ -211,11 +206,21 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     staffPool.forEach(emp => {
                         let isEmployeeOnLeave = false;
                         const onHoliday = leaveEvents.find(leave => (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        
+                        // NAME-BASED MATCHING FIX: Use includes() for flexible matching.
                         const onVacation = leaveEvents.find(leave => {
                             if (leave.extendedProps.type !== 'vacation') return false;
+                            
+                            // The full title from the calendar event, e.g., "Leave Diego Córdova"
                             const vacationTitle = leave.extendedProps.employeeName;
+                            
+                            // Check for null/empty strings to prevent errors
                             if (!vacationTitle || !emp.name) return false;
+
+                            // CORE FIX: Check if the calendar title INCLUDES the employee's name from the config.
+                            // This is case-insensitive.
                             if (vacationTitle.toLowerCase().includes(emp.name.toLowerCase())) {
+                                // Safety check for ambiguity
                                 const matchingEmployees = appData.employees.filter(e => vacationTitle.toLowerCase().includes(e.name.toLowerCase()));
                                 if (matchingEmployees.length > 1) {
                                      console.warn(`AMBIGUOUS VACATION: Event "${vacationTitle}" could apply to multiple employees: ${matchingEmployees.map(e => e.name).join(', ')}. Matching with ${emp.name}.`);
