@@ -257,3 +257,14 @@ body {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
 }
 
+/* =======================
+   8. FORCE STACKING ORDER
+   ======================= */
+.fc-daygrid-event.impact-event {            /* base for all capacity bars */
+    position: relative;                     /* activate z‑index */
+}
+.fc-daygrid-event.impact-critical  { z-index: 60 !important; }  /* red    – very top */
+.fc-daygrid-event.impact-warning   { z-index: 50 !important; }  /* yellow */
+.fc-daygrid-event.impact-covered   { z-index: 40 !important; }  /* green  – bottom */
+.fc-daygrid-event.vacation-event,
+.fc-daygrid-event.holiday-event    { z-index: 10 !important; }  /* leave  – lowest */
