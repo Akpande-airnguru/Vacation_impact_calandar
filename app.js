@@ -169,7 +169,7 @@ function initializeCalendar() {
         },
 
         // The eventOrder property uses the new detailed sortPriority values.
-        eventOrder: 'extendedProps.sortPriority,title',
+        eventOrder: 'extendedProps.sortPriority,extendedProps.titleText',
 
         eventContent: function(arg) {
             let htmlContent = '';
@@ -202,64 +202,94 @@ function initializeCalendar() {
 function generateImpactEvents(fetchInfo, leaveEvents = []) {
     const impactEvents = [];
     const { start, end } = fetchInfo;
+
     for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
         const currentDateStr = day.toISOString().split('T')[0];
+
         const checkEntity = (entity, isRegion = false) => {
             let worstStatus = 'covered';
             const impactDetails = [];
             const statusSummary = [];
+
             entity.requirements.forEach(req => {
                 req.teams.forEach(teamName => {
-                    const staffPool = isRegion 
+                    const staffPool = isRegion
                         ? appData.employees.filter(e => e.team === teamName && entity.countries.includes(e.country))
                         : appData.employees.filter(e => e.team === teamName);
+
                     let onLeaveCount = 0;
                     const onLeaveNames = new Set();
+
                     staffPool.forEach(emp => {
                         let isEmployeeOnLeave = false;
-                        const onHoliday = leaveEvents.find(leave => (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+
+                        const onHoliday = leaveEvents.find(leave =>
+                            (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') &&
+                            leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) &&
+                            currentDateStr >= leave.start &&
+                            currentDateStr < (leave.end || new Date(new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
+                        );
+
                         const onVacation = leaveEvents.find(leave => {
                             if (leave.extendedProps.type !== 'vacation') return false;
                             const vacationTitle = leave.extendedProps.employeeName;
                             if (!vacationTitle || !emp.name) return false;
+
                             if (vacationTitle.toLowerCase().includes(emp.name.toLowerCase())) {
-                                const matchingEmployees = appData.employees.filter(e => vacationTitle.toLowerCase().includes(e.name.toLowerCase()));
+                                const matchingEmployees = appData.employees.filter(e =>
+                                    vacationTitle.toLowerCase().includes(e.name.toLowerCase())
+                                );
                                 if (matchingEmployees.length > 1) {
-                                     console.warn(`AMBIGUOUS VACATION: Event "${vacationTitle}" could apply to multiple employees: ${matchingEmployees.map(e => e.name).join(', ')}. Matching with ${emp.name}.`);
+                                    console.warn(`AMBIGUOUS VACATION: Event "${vacationTitle}" could apply to multiple employees: ${matchingEmployees.map(e => e.name).join(', ')}. Matching with ${emp.name}.`);
                                 }
                                 return true;
                             }
                             return false;
                         });
 
-                        if (onVacation && currentDateStr >= onVacation.start && currentDateStr < (onVacation.end || (new Date(onVacation.start).setDate(new Date(onVacation.start).getDate() + 1)).toISOString().split('T')[0])) {
+                        if (
+                            onVacation &&
+                            currentDateStr >= onVacation.start &&
+                            currentDateStr < (onVacation.end || new Date(new Date(onVacation.start).setDate(new Date(onVacation.start).getDate() + 1)).toISOString().split('T')[0])
+                        ) {
                             isEmployeeOnLeave = true;
                             onLeaveNames.add(`${emp.name} (Vacation)`);
                         } else if (onHoliday) {
                             isEmployeeOnLeave = true;
                             onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`);
                         }
-                        if(isEmployeeOnLeave) onLeaveCount++;
+
+                        if (isEmployeeOnLeave) onLeaveCount++;
                     });
+
                     const availableCount = staffPool.length - onLeaveCount;
                     let teamStatus = 'covered';
+
                     if (availableCount < req.min) teamStatus = 'critical';
                     else if (availableCount === req.min) teamStatus = 'warning';
+
                     if (teamStatus === 'critical') worstStatus = 'critical';
                     else if (teamStatus === 'warning' && worstStatus !== 'critical') worstStatus = 'warning';
+
                     let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${staffPool.length} (Req: ${req.min})`;
-                    if (teamStatus !== 'covered') { statusSummary.push(`${teamName}: ${availableCount}/${req.min}`); teamDetail += ` <strong class="text-${teamStatus === 'critical' ? 'danger' : 'warning'}">(${teamStatus.charAt(0).toUpperCase() + teamStatus.slice(1)})</strong>`; } else { teamDetail += ` (OK)`; }
-                    
-                    if (teamStatus !== 'covered' || onLeaveNames.size > 0) { 
-                        impactDetails.push(teamDetail); 
-                        if (onLeaveNames.size > 0) { 
-                            impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); 
-                        } 
+
+                    if (teamStatus !== 'covered') {
+                        statusSummary.push(`${teamName}: ${availableCount}/${req.min}`);
+                        teamDetail += ` <strong class="text-${teamStatus === 'critical' ? 'danger' : 'warning'}">(${teamStatus.charAt(0).toUpperCase() + teamStatus.slice(1)})</strong>`;
+                    } else {
+                        teamDetail += ` (OK)`;
+                    }
+
+                    if (teamStatus !== 'covered' || onLeaveNames.size > 0) {
+                        impactDetails.push(teamDetail);
+                        if (onLeaveNames.size > 0) {
+                            impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`);
+                        }
                     }
                 });
             });
 
-            // ADVANCED SORTING: Define the detailed sort order
+            // Sorting Priority Map
             const sortPriorityMap = {
                 critical_region: 10,
                 critical_customer: 20,
@@ -268,16 +298,23 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 covered_region: 50,
                 covered_customer: 60
             };
+
             const entityType = isRegion ? 'region' : 'customer';
             const sortKey = `${worstStatus}_${entityType}`;
             const sortPriority = sortPriorityMap[sortKey];
 
-            const title = isRegion ? `[Region] ${entity.name}` : entity.name;
+            const plainTitle = isRegion ? `[Region] ${entity.name}` : entity.name;
             const statusClass = `impact-event impact-${worstStatus}`;
-            let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${title}</span>`;
-            if (statusSummary.length > 0) titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
-            const description = impactDetails.length > 0 ? impactDetails.join('<br>') : `All teams are fully covered.`;
-            
+            let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${plainTitle}</span>`;
+
+            if (statusSummary.length > 0) {
+                titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
+            }
+
+            const description = impactDetails.length > 0
+                ? impactDetails.join('<br>')
+                : `All teams are fully covered.`;
+
             const eventData = {
                 title: titleHtml,
                 start: currentDateStr,
@@ -285,20 +322,22 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 className: statusClass,
                 extendedProps: {
                     description,
-                    sortPriority: sortPriority // Use the new detailed priority
+                    sortPriority,
+                    titleText: plainTitle
                 }
             };
 
-            // ADVANCED SORTING: Prevent critical events from being collapsed
             if (worstStatus === 'critical') {
                 eventData.display = 'block';
             }
 
             impactEvents.push(eventData);
         };
+
         appData.customers.forEach(customer => checkEntity(customer, false));
         appData.regions.forEach(region => checkEntity(region, true));
     }
+
     return impactEvents;
 }
 
