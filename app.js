@@ -157,8 +157,20 @@ function initializeCalendar() {
     calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
-        dayMaxEvents: true,
+
+        // ADVANCED SORTING: Update dayMaxEvents to a function.
+        // This tells FullCalendar to calculate the number of slots dynamically,
+        // which is necessary when some events are pinned open with 'display: block'.
+        dayMaxEvents: function(arg) {
+            // This is a reasonable starting point. It might need tweaking
+            // depending on your average number of critical events per day.
+            // Returning 'true' would revert to automatic height.
+            return 4; 
+        },
+
+        // The eventOrder property uses the new detailed sortPriority values.
         eventOrder: 'extendedProps.sortPriority,title',
+
         eventContent: function(arg) {
             let htmlContent = '';
             if (arg.event.extendedProps.type) {
@@ -238,7 +250,6 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${staffPool.length} (Req: ${req.min})`;
                     if (teamStatus !== 'covered') { statusSummary.push(`${teamName}: ${availableCount}/${req.min}`); teamDetail += ` <strong class="text-${teamStatus === 'critical' ? 'danger' : 'warning'}">(${teamStatus.charAt(0).toUpperCase() + teamStatus.slice(1)})</strong>`; } else { teamDetail += ` (OK)`; }
                     
-                    // CORE FIX IS HERE: The condition for adding details is now correct.
                     if (teamStatus !== 'covered' || onLeaveNames.size > 0) { 
                         impactDetails.push(teamDetail); 
                         if (onLeaveNames.size > 0) { 
@@ -247,12 +258,43 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     }
                 });
             });
+
+            // ADVANCED SORTING: Define the detailed sort order
+            const sortPriorityMap = {
+                critical_region: 10,
+                critical_customer: 20,
+                warning_region: 30,
+                warning_customer: 40,
+                covered_region: 50,
+                covered_customer: 60
+            };
+            const entityType = isRegion ? 'region' : 'customer';
+            const sortKey = `${worstStatus}_${entityType}`;
+            const sortPriority = sortPriorityMap[sortKey];
+
             const title = isRegion ? `[Region] ${entity.name}` : entity.name;
             const statusClass = `impact-event impact-${worstStatus}`;
             let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${title}</span>`;
             if (statusSummary.length > 0) titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
             const description = impactDetails.length > 0 ? impactDetails.join('<br>') : `All teams are fully covered.`;
-            impactEvents.push({ title: titleHtml, start: currentDateStr, allDay: true, className: statusClass, extendedProps: { description, sortPriority: 2 } });
+            
+            const eventData = {
+                title: titleHtml,
+                start: currentDateStr,
+                allDay: true,
+                className: statusClass,
+                extendedProps: {
+                    description,
+                    sortPriority: sortPriority // Use the new detailed priority
+                }
+            };
+
+            // ADVANCED SORTING: Prevent critical events from being collapsed
+            if (worstStatus === 'critical') {
+                eventData.display = 'block';
+            }
+
+            impactEvents.push(eventData);
         };
         appData.customers.forEach(customer => checkEntity(customer, false));
         appData.regions.forEach(region => checkEntity(region, true));
@@ -275,7 +317,7 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
     }
 }
 
-async function fetchGoogleCalendarData(fetchInfo) {
+sync function fetchGoogleCalendarData(fetchInfo) {
     const { vacationCalendarId, holidayCalendarId } = appData.settings;
     if (gapi.client.getToken() === null) return [];
     const { startStr, endStr } = fetchInfo;
@@ -300,32 +342,35 @@ async function fetchGoogleCalendarData(fetchInfo) {
                 let cleanEventTitle = event.summary;
                 let applicableCountries = [];
                 let employeeName = null;
-                
-                // STYLING FIX: Define a specific class for each event type
-                let eventClassName = 'leave-event'; // A generic fallback
+                let eventClassName = 'leave-event';
                 if (type === 'vacation') {
                     employeeName = event.summary.trim();
                     cleanEventTitle = employeeName;
-                    eventClassName = 'vacation-event'; // Specific class for vacations
+                    eventClassName = 'vacation-event';
                 } else { // Holiday
                     if (countryCode) { applicableCountries.push(countryCode.toLowerCase()); }
                     const titleMatch = event.summary.match(/^([A-Z]{3}(?:\s*,\s*[A-Z]{3})*)\s*-\s*(.*)$/);
-                    if (titleMatch) {
-                        cleanEventTitle = titleMatch[2];
-                        const countriesFromTitle = titleMatch[1].split(',').map(c => c.trim().toLowerCase());
-                        applicableCountries = [...new Set([...applicableCountries, ...countriesFromTitle])];
+                    if (titleMatch) { 
+                        cleanEventTitle = titleMatch[2]; 
+                        const countriesFromTitle = titleMatch[1].split(',').map(c => c.trim().toLowerCase()); 
+                        applicableCountries = [...new Set([...applicableCountries, ...countriesFromTitle])]; 
                     }
-                    eventClassName = 'holiday-event'; // Specific class for holidays
+                    eventClassName = 'holiday-event';
                 }
-
                 return {
                     title: event.summary,
                     start: event.start.date || event.start.dateTime,
                     end: event.end.date || event.end.dateTime,
                     allDay: !!event.start.date,
-                    // STYLING FIX: Use the new specific class name
                     className: eventClassName,
-                    extendedProps: { employeeName, type, description: cleanEventTitle, applicableCountries, sortPriority: 1 }
+                    extendedProps: {
+                        employeeName,
+                        type,
+                        description: cleanEventTitle,
+                        applicableCountries,
+                        // ADVANCED SORTING: Give leave events a low priority to appear at the bottom.
+                        sortPriority: 100 
+                    }
                 };
             });
             allEvents = allEvents.concat(mappedEvents);
