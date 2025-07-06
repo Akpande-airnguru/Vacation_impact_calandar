@@ -149,7 +149,6 @@ function parseGenericFields(row) {
 }
 
 function processGenericCsvData(data) {
-    // Reset data arrays, preserve settings
     appData.customers = [];
     appData.employees = [];
     appData.regions = [];
@@ -213,10 +212,12 @@ function initializeCalendar() {
         },
         dayMaxEvents: true,
 
+        // SORTING FIX: Add eventOrder to sort by our custom priority field first, then alphabetically by title.
+        eventOrder: 'extendedProps.sortPriority,title',
+
         eventContent: function(arg) {
             let htmlContent = '';
             
-            // This function relies on extendedProps.description being correctly formatted.
             if (arg.event.extendedProps.type) {
                 htmlContent = `<div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>`;
             }
@@ -234,6 +235,7 @@ function initializeCalendar() {
 
         eventDidMount: function(info) {
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
+            // This now works for ALL events because the description is consistently in extendedProps.
             if (info.event.extendedProps.description) {
                 new bootstrap.Tooltip(info.el, {
                     title: info.event.extendedProps.description,
@@ -260,14 +262,16 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
     for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
         const currentDateStr = day.toISOString().split('T')[0];
 
-        // --- 1. CUSTOMER CHECK (Existing Logic) ---
+        // --- 1. CUSTOMER CHECK ---
         appData.customers.forEach(customer => {
+            // ... (inner logic for calculating status is unchanged) ...
             let worstStatus = 'covered';
             const impactDetails = [];
             const statusSummary = [];
             if (!customer.requirements || customer.requirements.length === 0) {
-                const titleHtml = `<span class="fc-event-title-main impact-covered">${customer.name}</span>`;
-                impactEvents.push({ title: titleHtml, start: currentDateStr, allDay: true, className: 'impact-covered', description: 'No staffing requirements defined.' });
+                 const titleHtml = `<span class="fc-event-title-main impact-covered">${customer.name}</span>`;
+                // SORTING FIX: Add extendedProps with description and sortPriority
+                impactEvents.push({ title: titleHtml, start: currentDateStr, allDay: true, className: 'impact-covered', extendedProps: { description: 'No staffing requirements defined.', sortPriority: 2 } });
                 return;
             }
             customer.requirements.forEach(req => {
@@ -303,17 +307,28 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
             const statusClass = `impact-event impact-${worstStatus}`;
             let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${customer.name}</span>`;
             if (statusSummary.length > 0) { titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`; }
-            const eventData = { title: titleHtml, start: currentDateStr, allDay: true, className: statusClass, description: impactDetails.length > 0 ? impactDetails.join('<br>') : "All teams are fully covered." };
+            
+            // SORTING FIX: Move description into extendedProps and add sortPriority.
+            const eventData = {
+                title: titleHtml,
+                start: currentDateStr,
+                allDay: true,
+                className: statusClass,
+                extendedProps: {
+                    description: impactDetails.length > 0 ? impactDetails.join('<br>') : "All teams are fully covered.",
+                    sortPriority: 2
+                }
+            };
             impactEvents.push(eventData);
         });
 
         // --- 2. REGION CHECK ---
         appData.regions.forEach(region => {
+            // ... (inner logic for calculating status is unchanged) ...
             let worstStatus = 'covered';
             const impactDetails = [];
             const statusSummary = [];
             if (!region.requirements || region.requirements.length === 0) return;
-
             region.requirements.forEach(req => {
                 const requiredTeams = req.teams;
                 const minPerTeam = req.min;
@@ -347,7 +362,18 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
             const statusClass = `impact-event impact-${worstStatus}`;
             let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">[Region] ${region.name}</span>`;
             if (statusSummary.length > 0) { titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`; }
-            const eventData = { title: titleHtml, start: currentDateStr, allDay: true, className: statusClass, description: impactDetails.length > 0 ? impactDetails.join('<br>') : "All teams in this region are fully covered." };
+            
+            // SORTING FIX: Move description into extendedProps and add sortPriority.
+            const eventData = {
+                title: titleHtml,
+                start: currentDateStr,
+                allDay: true,
+                className: statusClass,
+                extendedProps: {
+                    description: impactDetails.length > 0 ? impactDetails.join('<br>') : "All teams in this region are fully covered.",
+                    sortPriority: 2
+                }
+            };
             impactEvents.push(eventData);
         });
 
@@ -404,30 +430,25 @@ async function fetchGoogleCalendarData(fetchInfo) {
             const { response, type, countryCode } = result.value;
             const events = response.result.items || [];
             
-            // ================== MODIFICATION START ==================
-            // This entire mapping function is updated to properly format the description.
             const mappedEvents = events.map(event => {
-                let eventCountry = countryCode; // Use the country from the promise by default
+                let eventCountry = countryCode;
                 let eventTitle = event.summary;
                 
-                // For the "Official Holiday" calendar, parse the country from the title like "CHI - Holiday Name"
                 if (type === 'officialHoliday') {
                     const match = event.summary.match(/^([A-Z]{3})\s*-\s*(.*)$/);
                     if (match) {
-                        eventCountry = match[1].toLowerCase(); // e.g., 'chi'
-                        eventTitle = match[2];               // e.g., 'San Pedro y San Pablo'
+                        eventCountry = match[1].toLowerCase();
+                        eventTitle = match[2];
                     }
                 }
 
-                // --- THIS IS THE KEY FIX ---
-                // Create a display-ready description. For holidays, prepend the country code.
-                let displayDescription = eventTitle; // Default to the parsed title
+                let displayDescription = eventTitle;
                 if ((type === 'officialHoliday' || type === 'publicHoliday') && eventCountry) {
                     displayDescription = `${eventCountry.toUpperCase()} - ${eventTitle}`;
                 }
 
                 return {
-                    title: event.summary, // Keep original summary for raw data
+                    title: event.summary,
                     start: event.start.date || event.start.dateTime,
                     end: event.end.date || event.end.dateTime,
                     allDay: !!event.start.date,
@@ -436,13 +457,12 @@ async function fetchGoogleCalendarData(fetchInfo) {
                         employeeName: type === 'vacation' ? (event.summary.split(':')[1]?.trim() || event.summary) : null,
                         type: type,
                         countryCode: eventCountry,
-                        // Use the newly formatted description for display purposes
-                        description: displayDescription 
+                        description: displayDescription,
+                        // SORTING FIX: Add sortPriority for leave events.
+                        sortPriority: 1
                     }
                 };
             });
-            // =================== MODIFICATION END ===================
-
             allEvents = allEvents.concat(mappedEvents);
         } else if (result.status === 'rejected') {
             console.error("Failed to fetch calendar:", result.reason);
