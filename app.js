@@ -154,92 +154,70 @@ function processGenericCsvData(data) {
 
 function initializeCalendar() {
     const calendarEl = document.getElementById('calendar');
+
     calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
-        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
-
-        // ADVANCED SORTING: Update dayMaxEvents to a function.
-        // This tells FullCalendar to calculate the number of slots dynamically,
-        // which is necessary when some events are pinned open with 'display: block'.
-        dayMaxEvents: function(arg) {
-            // This is a reasonable starting point. It might need tweaking
-            // depending on your average number of critical events per day.
-            // Returning 'true' would revert to automatic height.
-            return 4; 
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,listWeek'
         },
 
-        // The eventOrder property uses the new detailed sortPriority values.
-        eventOrder: 'extendedProps.sortPriority desc,extendedProps.titleText',
+        // Let FullCalendar determine how many events to show in a day cell
+        dayMaxEvents: true, // Allow "+n more" link
+
+        // Sort events using our custom sortPriority
+        eventOrder: 'extendedProps.sortPriority desc, title',
 
         eventContent: function(arg) {
             let htmlContent = '';
+
             if (arg.event.extendedProps.type) {
+                // This is a leave/holiday event
                 htmlContent = `<div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>`;
             } else {
-                if (arg.view.type === 'dayGridMonth') {
-                    const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
-                    htmlContent = `<div class="fc-event-title">${mainTitleMatch ? mainTitleMatch[1] : 'Event'}</div>`;
-                } else {
-                    htmlContent = arg.event.title;
-                }
+                // This is a customer or region impact event
+                const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
+                const eventTitle = mainTitleMatch ? mainTitleMatch[1] : arg.event.title;
+                htmlContent = `<div class="fc-event-title">${eventTitle}</div>`;
             }
+
             return { html: htmlContent };
         },
+
         eventDidMount: function(info) {
-    // Tooltip setup (unchanged)
-    document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
-    if (info.event.extendedProps.description) {
-        new bootstrap.Tooltip(info.el, {
-            title: info.event.extendedProps.description,
-            placement: 'top',
-            trigger: 'hover',
-            container: 'body',
-            html: true
-        });
-    }
+            // Tooltip cleanup
+            document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
 
-    // 🧠 PRIORITY-BASED RENDER FIX
-    const priorityMap = {
-        'impact-critical': 3,
-        'impact-warning': 2,
-        'impact-covered': 1,
-        'vacation-event': 0,
-        'holiday-event': 0,
-        'leave-event': 0
-    };
+            if (info.event.extendedProps.description) {
+                new bootstrap.Tooltip(info.el, {
+                    title: info.event.extendedProps.description,
+                    placement: 'top',
+                    trigger: 'hover',
+                    container: 'body',
+                    html: true
+                });
+            }
+        },
 
-    const el = info.el;
-    const classList = el.classList;
+        listDayFormat: {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+            weekday: 'long'
+        },
 
-    let priority = 0;
-    for (const cls of classList) {
-        if (priorityMap.hasOwnProperty(cls)) {
-            priority = priorityMap[cls];
-            break;
-        }
-    }
+        buttonText: {
+            listWeek: 'week',
+            dayGridMonth: 'month'
+        },
 
-    el.setAttribute('data-sort-priority', priority);
-
-    const parent = el.parentNode;
-    if (parent) {
-        const children = Array.from(parent.children);
-        const sorted = children.sort((a, b) => {
-            const aP = parseInt(a.getAttribute('data-sort-priority') || 0, 10);
-            const bP = parseInt(b.getAttribute('data-sort-priority') || 0, 10);
-            return bP - aP; // Descending priority
-        });
-        sorted.forEach(child => parent.appendChild(child));
-    }
-},
-        listDayFormat: { month: 'long', day: 'numeric', year: 'numeric', weekday: 'long' },
-        buttonText: { listWeek: 'week', dayGridMonth: 'month' },
-        noEventsContent: 'All customers are fully covered for this period.',
+        noEventsContent: 'All customers are fully covered for this period.'
     });
+
     calendar.setOption('events', fetchCalendarEvents);
     calendar.render();
 }
-
 function generateImpactEvents(fetchInfo, leaveEvents = []) {
     const impactEvents = [];
     const { start, end } = fetchInfo;
@@ -368,9 +346,10 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 }
             };
 
-            if (worstStatus === 'critical') {
+           /* if (worstStatus === 'critical') {
                 eventData.display = 'block';
             }
+            */
 
             impactEvents.push(eventData);
         };
