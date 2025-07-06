@@ -230,3 +230,30 @@ body {
     font-weight: 800;
     opacity: 1 !important; /* prevent inherited fading */
 }
+
+.fc-daygrid-event.holiday-event {
+    background-color: #cdeedc !important;       /* soft green background */
+    color: #064d28 !important;                  /* deep forest green text */
+    border: 1px solid #79c190 !important;       /* complementary border */
+    font-weight: 700;
+    font-size: 0.82em;
+    padding: 4px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+}
+
+.fc-daygrid-event.holiday-event .fc-event-title::before {
+    content: '🎉';
+    margin-right: 4px;
+    font-size: 1em;
+    opacity: 1;
+}
+
+.fc-daygrid-event.holiday-event:hover {
+    background-color: #b7e8cc !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
