@@ -382,9 +382,12 @@ async function fetchGoogleCalendarData(fetchInfo) {
                 let applicableCountries = [];
                 let employeeName = null;
                 let eventClassName = 'leave-event';
+                let displayDescription = event.summary; // Default description
+
                 if (type === 'vacation') {
                     employeeName = event.summary.trim();
                     cleanEventTitle = employeeName;
+                    displayDescription = employeeName; // For vacations, the description is just the name
                     eventClassName = 'vacation-event';
                 } else { // Holiday
                     if (countryCode) { applicableCountries.push(countryCode.toLowerCase()); }
@@ -393,11 +396,14 @@ async function fetchGoogleCalendarData(fetchInfo) {
                         cleanEventTitle = titleMatch[2]; 
                         const countriesFromTitle = titleMatch[1].split(',').map(c => c.trim().toLowerCase()); 
                         applicableCountries = [...new Set([...applicableCountries, ...countriesFromTitle])]; 
+                        // COUNTRY DISPLAY FIX: Rebuild the description with country codes
+                        displayDescription = `${countriesFromTitle.join(', ').toUpperCase()} - ${cleanEventTitle}`;
                     }
                     eventClassName = 'holiday-event';
                 }
+                
                 return {
-                    title: event.summary,
+                    title: event.summary, // Keep original title for internal use
                     start: event.start.date || event.start.dateTime,
                     end: event.end.date || event.end.dateTime,
                     allDay: !!event.start.date,
@@ -405,9 +411,8 @@ async function fetchGoogleCalendarData(fetchInfo) {
                     extendedProps: {
                         employeeName,
                         type,
-                        description: cleanEventTitle,
+                        description: displayDescription, // Use the rebuilt description for display
                         applicableCountries,
-                        // ADVANCED SORTING: Give leave events a low priority to appear at the bottom.
                         sortPriority: 100 
                     }
                 };
