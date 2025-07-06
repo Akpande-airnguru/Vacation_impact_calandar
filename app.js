@@ -37,7 +37,6 @@ function initializeApp() {
     gapi.load('client', initializeGapiClient);
 }
 
-
 // =================================================================================
 // 2. DATA PERSISTENCE & UI
 // =================================================================================
@@ -51,7 +50,6 @@ function loadDataFromLocalStorage() {
     }
 }
 
-// RESTORED FUNCTION: This connects all the UI buttons to their actions.
 function setupEventListeners() {
     document.getElementById('csv-import').addEventListener('change', handleCsvImport);
     document.getElementById('download-template-btn').addEventListener('click', downloadCsvTemplate);
@@ -96,12 +94,13 @@ function downloadCsvTemplate(event) {
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
 }
 
-// RESTORED FUNCTION: This handles the CSV file upload.
 function handleCsvImport(event) {
     const file = event.target.files[0];
     if (file) {
         Papa.parse(file, {
-            header: true, skipEmptyLines: true,
+            header: true, 
+            skipEmptyLines: true,
+            encoding: "UTF-8",
             complete: (results) => {
                 processGenericCsvData(results.data);
                 saveDataToLocalStorage();
@@ -113,7 +112,6 @@ function handleCsvImport(event) {
     }
 }
 
-// RESTORED FUNCTION: This parses generic fields from the CSV.
 function parseGenericFields(row) {
     const fields = {};
     for (let i = 1; i <= 4; i++) {
@@ -154,7 +152,6 @@ function processGenericCsvData(data) {
 // 4. CALENDAR LOGIC ENGINE
 // =================================================================================
 
-// RESTORED FUNCTION: This initializes the FullCalendar instance.
 function initializeCalendar() {
     const calendarEl = document.getElementById('calendar');
     calendar = new FullCalendar.Calendar(calendarEl, {
@@ -209,19 +206,30 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     staffPool.forEach(emp => {
                         let isEmployeeOnLeave = false;
                         const onHoliday = leaveEvents.find(leave => (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        
+                        // NAME-BASED MATCHING FIX: Use includes() for flexible matching.
                         const onVacation = leaveEvents.find(leave => {
                             if (leave.extendedProps.type !== 'vacation') return false;
-                            const employeeNameFromEvent = leave.extendedProps.employeeName;
-                            if (!employeeNameFromEvent) return false;
-                            if (employeeNameFromEvent.toLowerCase() === emp.name.toLowerCase()) {
-                                const matchingEmployees = appData.employees.filter(e => e.name.toLowerCase() === employeeNameFromEvent.toLowerCase());
+                            
+                            // The full title from the calendar event, e.g., "Leave Diego Córdova"
+                            const vacationTitle = leave.extendedProps.employeeName;
+                            
+                            // Check for null/empty strings to prevent errors
+                            if (!vacationTitle || !emp.name) return false;
+
+                            // CORE FIX: Check if the calendar title INCLUDES the employee's name from the config.
+                            // This is case-insensitive.
+                            if (vacationTitle.toLowerCase().includes(emp.name.toLowerCase())) {
+                                // Safety check for ambiguity
+                                const matchingEmployees = appData.employees.filter(e => vacationTitle.toLowerCase().includes(e.name.toLowerCase()));
                                 if (matchingEmployees.length > 1) {
-                                    console.warn(`AMBIGUOUS NAME: Vacation found for "${employeeNameFromEvent}", but there are ${matchingEmployees.length} employees with this name. Resource planning may be incorrect.`);
+                                     console.warn(`AMBIGUOUS VACATION: Event "${vacationTitle}" could apply to multiple employees: ${matchingEmployees.map(e => e.name).join(', ')}. Matching with ${emp.name}.`);
                                 }
                                 return true;
                             }
                             return false;
                         });
+
                         if (onVacation && currentDateStr >= onVacation.start && currentDateStr < (onVacation.end || (new Date(onVacation.start).setDate(new Date(onVacation.start).getDate() + 1)).toISOString().split('T')[0])) {
                             isEmployeeOnLeave = true;
                             onLeaveNames.add(`${emp.name} (Vacation)`);
@@ -259,7 +267,6 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
 // =================================================================================
 // 5. GOOGLE CALENDAR API
 // =================================================================================
-// RESTORED FUNCTION: This is the main function that fetches all events.
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
     try {
         const googleLeaveEvents = await fetchGoogleCalendarData(fetchInfo);
@@ -297,12 +304,7 @@ async function fetchGoogleCalendarData(fetchInfo) {
                 let applicableCountries = [];
                 let employeeName = null;
                 if (type === 'vacation') {
-                    const nameMatch = event.summary.match(/^(?:Vacations|Vacation:?)\s+(.*)$/i);
-                    if (nameMatch) {
-                        employeeName = nameMatch[1].trim();
-                    } else {
-                        employeeName = event.summary.trim();
-                    }
+                    employeeName = event.summary.trim();
                     cleanEventTitle = employeeName;
                 } else { // Holiday
                     if (countryCode) { applicableCountries.push(countryCode.toLowerCase()); }
@@ -328,7 +330,7 @@ async function fetchGoogleCalendarData(fetchInfo) {
     return allEvents;
 }
 
-// Google Auth functions (gisLoaded, initializeGapiClient, etc.) are all unchanged and complete
+// Google Auth functions
 window.gisLoaded = function() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '', }); gisInited = true; maybeEnableButtons(); };
 async function initializeGapiClient() { try { await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS }); gapiInited = true; maybeEnableButtons(); if (gapi.client.getToken()) { populateCalendarSelectors(); } } catch (e) { console.error("Error initializing GAPI client:", e); } }
 function maybeEnableButtons() { if (gapiInited && gisInited) { document.getElementById('authorize_button').style.visibility = 'visible'; } }
