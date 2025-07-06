@@ -111,6 +111,30 @@ body {
     border-color: var(--holiday-bg-color);
 }
 
+
+/* Stronger visibility and contrast for vacation events */
+.fc-daygrid-event.vacation-event {
+    background-color: #d2e9fb !important; /* more saturated light blue */
+    color: #002244 !important;            /* deep navy text */
+    border: 1px solid #a5cbe4 !important;
+    font-weight: 600;
+    font-size: 0.8em;
+    padding: 3px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Emoji prefix for clarity */
+.fc-daygrid-event.vacation-event .fc-event-title::before {
+    content: '🌴';
+    margin-right: 4px;
+    font-size: 0.9em;
+    opacity: 0.9;
+}
+
 /* 4. "+n more" POPOVER STYLES */
 .fc-popover {
     border: none;
