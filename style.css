@@ -292,3 +292,9 @@ body {
     border-radius: 4px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
+
+.fc-daygrid-event.holiday-event .fc-event-title {
+    color: var(--holiday-text-color) !important;
+    font-weight: 800;
+    opacity: 1 !important;
+}
