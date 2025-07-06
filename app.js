@@ -158,26 +158,32 @@ function initializeCalendar() {
         initialView: 'dayGridMonth',
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
 
-        // This allows FullCalendar to automatically handle the "+n more" link,
-        // which is necessary when using `display: 'block'` for some events.
         dayMaxEvents: true,
 
-        // SORTING FIX: Remove 'desc' to sort in ascending order (low numbers first).
-        // This is the only line that needs to be changed in this function.
+        // This sorting order is correct. Low numbers (critical) will appear first.
         eventOrder: 'extendedProps.sortPriority,extendedProps.titleText',
 
+        // FIX: Restore the logic to handle month and list views differently.
         eventContent: function(arg) {
             let htmlContent = '';
-            // For leave/holiday events, show the description (which includes country codes).
+            
+            // For leave/holiday events, the display is the same in all views.
             if (arg.event.extendedProps.type) {
                 htmlContent = `<div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>`;
             } else {
-                // For impact events, use the rich HTML from the title property.
-                // This ensures our custom-styled spans and details show up correctly in all views.
-                htmlContent = arg.event.title;
+                // For Customer/Region Impact events, the display changes by view.
+                if (arg.view.type === 'dayGridMonth') {
+                    // In MONTH VIEW, we only want the clean name (e.g., "Heron", "[Region] ASIA").
+                    const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
+                    htmlContent = `<div class="fc-event-title">${mainTitleMatch ? mainTitleMatch[1] : 'Event'}</div>`;
+                } else {
+                    // In LIST VIEW, we want the full rich HTML with status details.
+                    htmlContent = arg.event.title;
+                }
             }
             return { html: htmlContent };
         },
+        
         eventDidMount: function(info) {
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
             if (info.event.extendedProps.description) {
