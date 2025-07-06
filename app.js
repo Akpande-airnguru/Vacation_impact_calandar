@@ -206,21 +206,11 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     staffPool.forEach(emp => {
                         let isEmployeeOnLeave = false;
                         const onHoliday = leaveEvents.find(leave => (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
-                        
-                        // NAME-BASED MATCHING FIX: Use includes() for flexible matching.
                         const onVacation = leaveEvents.find(leave => {
                             if (leave.extendedProps.type !== 'vacation') return false;
-                            
-                            // The full title from the calendar event, e.g., "Leave Diego Córdova"
                             const vacationTitle = leave.extendedProps.employeeName;
-                            
-                            // Check for null/empty strings to prevent errors
                             if (!vacationTitle || !emp.name) return false;
-
-                            // CORE FIX: Check if the calendar title INCLUDES the employee's name from the config.
-                            // This is case-insensitive.
                             if (vacationTitle.toLowerCase().includes(emp.name.toLowerCase())) {
-                                // Safety check for ambiguity
                                 const matchingEmployees = appData.employees.filter(e => vacationTitle.toLowerCase().includes(e.name.toLowerCase()));
                                 if (matchingEmployees.length > 1) {
                                      console.warn(`AMBIGUOUS VACATION: Event "${vacationTitle}" could apply to multiple employees: ${matchingEmployees.map(e => e.name).join(', ')}. Matching with ${emp.name}.`);
@@ -247,7 +237,14 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     else if (teamStatus === 'warning' && worstStatus !== 'critical') worstStatus = 'warning';
                     let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${staffPool.length} (Req: ${req.min})`;
                     if (teamStatus !== 'covered') { statusSummary.push(`${teamName}: ${availableCount}/${req.min}`); teamDetail += ` <strong class="text-${teamStatus === 'critical' ? 'danger' : 'warning'}">(${teamStatus.charAt(0).toUpperCase() + teamStatus.slice(1)})</strong>`; } else { teamDetail += ` (OK)`; }
-                    if (availableCount < staffPool.length || onLeaveNames.size > 0) { impactDetails.push(teamDetail); if (onLeaveNames.size > 0) { impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); } }
+                    
+                    // CORE FIX IS HERE: The condition for adding details is now correct.
+                    if (teamStatus !== 'covered' || onLeaveNames.size > 0) { 
+                        impactDetails.push(teamDetail); 
+                        if (onLeaveNames.size > 0) { 
+                            impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); 
+                        } 
+                    }
                 });
             });
             const title = isRegion ? `[Region] ${entity.name}` : entity.name;
