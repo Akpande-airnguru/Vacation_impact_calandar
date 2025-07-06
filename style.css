@@ -269,19 +269,26 @@ body {
 .fc-daygrid-event.vacation-event,
 .fc-daygrid-event.holiday-event    { z-index: 10 !important; }  /* leave  – lowest */
 
-/* In list view, we don't want a background color, just colored text */
-.fc-list-event.vacation-event,
+/* Vacation styling in list view (matches month view) */
+.fc-list-event.vacation-event {
+    background-color: #bfdff8 !important;
+    color: #00111f !important;
+    border: 1px solid #5ca6d7 !important;
+    font-weight: 700;
+    font-size: 0.82em;
+    padding: 4px 6px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* Holiday styling in list view (matches month view) */
 .fc-list-event.holiday-event {
-    background-color: transparent !important;
-    border: none;
-}
-
-/* Style the text color for vacation events in the list */
-.fc-list-event.vacation-event .fc-event-title {
-    color: var(--vacation-text-color) !important;
-}
-
-/* Style the text color for holiday events in the list */
-.fc-list-event.holiday-event .fc-event-title {
-    color: var(--holiday-text-color) !important;
+    background-color: #cdeedc !important;
+    color: #064d28 !important;
+    border: 1px solid #79c190 !important;
+    font-weight: 700;
+    font-size: 0.82em;
+    padding: 4px 6px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
