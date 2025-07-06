@@ -159,6 +159,11 @@ function initializeCalendar() {
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
         dayMaxEvents: true,
         eventOrder: 'extendedProps.sortPriority,title',
+        views: {
+            listWeek: {
+                eventLimit: false
+            }
+        },
         eventContent: function(arg) {
             let htmlContent = '';
             if (arg.event.extendedProps.type) {
@@ -176,7 +181,14 @@ function initializeCalendar() {
         eventDidMount: function(info) {
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
             if (info.event.extendedProps.description) {
-                new bootstrap.Tooltip(info.el, { title: info.event.extendedProps.description, placement: 'top', trigger: 'hover', container: 'body', html: true });
+                new bootstrap.Tooltip(info.el, {
+                    title: info.event.extendedProps.description,
+                    placement: 'top',
+                    trigger: 'hover',
+                    container: 'body',
+                    html: true,
+                    delay: { show: 100, hide: 200 }
+                });
             }
         },
         listDayFormat: { month: 'long', day: 'numeric', year: 'numeric', weekday: 'long' },
@@ -187,76 +199,181 @@ function initializeCalendar() {
     calendar.render();
 }
 
+
 function generateImpactEvents(fetchInfo, leaveEvents = []) {
     const impactEvents = [];
     const { start, end } = fetchInfo;
-    for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
-        const currentDateStr = day.toISOString().split('T')[0];
-        const checkEntity = (entity, isRegion = false) => {
-            let worstStatus = 'covered';
-            const impactDetails = [];
-            const statusSummary = [];
-            entity.requirements.forEach(req => {
-                req.teams.forEach(teamName => {
-                    const staffPool = isRegion 
-                        ? appData.employees.filter(e => e.team === teamName && entity.countries.includes(e.country))
-                        : appData.employees.filter(e => e.team === teamName);
-                    let onLeaveCount = 0;
-                    const onLeaveNames = new Set();
-                    staffPool.forEach(emp => {
-                        let isEmployeeOnLeave = false;
-                        const onHoliday = leaveEvents.find(leave => (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) && currentDateStr >= leave.start && currentDateStr < (leave.end || (new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
-                        const onVacation = leaveEvents.find(leave => {
-                            if (leave.extendedProps.type !== 'vacation') return false;
-                            const vacationTitle = leave.extendedProps.employeeName;
-                            if (!vacationTitle || !emp.name) return false;
-                            if (vacationTitle.toLowerCase().includes(emp.name.toLowerCase())) {
-                                const matchingEmployees = appData.employees.filter(e => vacationTitle.toLowerCase().includes(e.name.toLowerCase()));
-                                if (matchingEmployees.length > 1) {
-                                     console.warn(`AMBIGUOUS VACATION: Event "${vacationTitle}" could apply to multiple employees: ${matchingEmployees.map(e => e.name).join(', ')}. Matching with ${emp.name}.`);
-                                }
-                                return true;
-                            }
-                            return false;
-                        });
 
-                        if (onVacation && currentDateStr >= onVacation.start && currentDateStr < (onVacation.end || (new Date(onVacation.start).setDate(new Date(onVacation.start).getDate() + 1)).toISOString().split('T')[0])) {
-                            isEmployeeOnLeave = true;
-                            onLeaveNames.add(`${emp.name} (Vacation)`);
-                        } else if (onHoliday) {
-                            isEmployeeOnLeave = true;
-                            onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`);
-                        }
-                        if(isEmployeeOnLeave) onLeaveCount++;
-                    });
-                    const availableCount = staffPool.length - onLeaveCount;
-                    let teamStatus = 'covered';
-                    if (availableCount < req.min) teamStatus = 'critical';
-                    else if (availableCount === req.min) teamStatus = 'warning';
-                    if (teamStatus === 'critical') worstStatus = 'critical';
-                    else if (teamStatus === 'warning' && worstStatus !== 'critical') worstStatus = 'warning';
-                    let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${staffPool.length} (Req: ${req.min})`;
-                    if (teamStatus !== 'covered') { statusSummary.push(`${teamName}: ${availableCount}/${req.min}`); teamDetail += ` <strong class="text-${teamStatus === 'critical' ? 'danger' : 'warning'}">(${teamStatus.charAt(0).toUpperCase() + teamStatus.slice(1)})</strong>`; } else { teamDetail += ` (OK)`; }
-                    
-                    // CORE FIX IS HERE: The condition for adding details is now correct.
-                    if (teamStatus !== 'covered' || onLeaveNames.size > 0) { 
-                        impactDetails.push(teamDetail); 
-                        if (onLeaveNames.size > 0) { 
-                            impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`); 
-                        } 
+    // -----------------------------------------------------------------
+    // Helper: decide how high each event should rank in the sort order
+    // -----------------------------------------------------------------
+    const statusOrder = {           // 1st level priority: status
+        critical: 1,   // red   – highest
+        warning: 2,    // yellow
+        covered: 3     // green – lowest
+    };
+
+    /**
+     * Builds a FullCalendar event for either a customer or a region
+     * @param {Object} entity       – customer or region object
+     * @param {Boolean} isRegion    – true = region, false = customer
+     * @param {Date} day            – JS Date currently being processed
+     */
+    const buildEventForEntity = (entity, isRegion, day) => {
+        const currentDateStr = day.toISOString().split('T')[0];
+
+        // Track the worst status across all teams for this entity on this day
+        let worstStatus = 'covered';
+        const impactDetails = [];       // detailed HTML for tooltip
+        const statusSummary = [];       // short inline “team x/y” strings
+
+        // -------------------------------------------------------------
+        // 1. Iterate each team requirement for this entity
+        // -------------------------------------------------------------
+        entity.requirements.forEach(req => {
+            req.teams.forEach(teamName => {
+                // Determine the pool of staff for this team
+                const staffPool = isRegion
+                    ? appData.employees.filter(
+                        e =>
+                            e.team === teamName &&
+                            entity.countries.includes(e.country)
+                    )
+                    : appData.employees.filter(e => e.team === teamName);
+
+                let onLeaveCount = 0;
+                const onLeaveNames = new Set();
+
+                // -----------------------------------------------------
+                // Check each employee for vacation or holiday
+                // -----------------------------------------------------
+                staffPool.forEach(emp => {
+                    const empCountry = emp.country?.toLowerCase() || '';
+                    const dateStr = currentDateStr;
+
+                    // Vacation?
+                    const vacationEvt = leaveEvents.find(
+                        lv =>
+                            lv.extendedProps.type === 'vacation' &&
+                            lv.extendedProps.employeeName &&
+                            lv.extendedProps.employeeName
+                                .toLowerCase()
+                                .includes(emp.name.toLowerCase()) &&
+                            dateStr >= lv.start &&
+                            dateStr < (lv.end || dateStr)
+                    );
+
+                    // Holiday? (official or public)
+                    const holidayEvt = leaveEvents.find(
+                        lv =>
+                            (lv.extendedProps.type === 'officialHoliday' ||
+                                lv.extendedProps.type === 'publicHoliday') &&
+                            lv.extendedProps.applicableCountries?.includes(
+                                empCountry
+                            ) &&
+                            dateStr >= lv.start &&
+                            dateStr < (lv.end || dateStr)
+                    );
+
+                    const isOnLeave = vacationEvt || holidayEvt;
+                    if (isOnLeave) {
+                        onLeaveCount++;
+                        onLeaveNames.add(
+                            `${emp.name} (${
+                                vacationEvt ? 'Vacation' : 'Holiday'
+                            })`
+                        );
                     }
                 });
+
+                const available = staffPool.length - onLeaveCount;
+                const required = req.min;
+
+                let teamStatus = 'covered';
+                if (available < required) teamStatus = 'critical';
+                else if (available === required) teamStatus = 'warning';
+
+                // Track *overall worst* status for this entity / day
+                if (teamStatus === 'critical') worstStatus = 'critical';
+                else if (teamStatus === 'warning' && worstStatus !== 'critical')
+                    worstStatus = 'warning';
+
+                // Assemble details
+                const detailLine = `<b>Team ${teamName}:</b> ${available}/${staffPool.length} (Req: ${required}) ${
+                    teamStatus !== 'covered'
+                        ? `<strong class="text-${
+                              teamStatus === 'critical' ? 'danger' : 'warning'
+                          }">(${teamStatus})</strong>`
+                        : '(OK)'
+                }`;
+                if (teamStatus !== 'covered' || onLeaveNames.size) {
+                    impactDetails.push(detailLine);
+                    if (onLeaveNames.size) {
+                        impactDetails.push(
+                            `<small><i>- On Leave: ${[
+                                ...onLeaveNames
+                            ].join(', ')}</i></small>`
+                        );
+                    }
+                }
+
+                if (teamStatus !== 'covered') {
+                    statusSummary.push(`${teamName}: ${available}/${required}`);
+                }
             });
-            const title = isRegion ? `[Region] ${entity.name}` : entity.name;
-            const statusClass = `impact-event impact-${worstStatus}`;
-            let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${title}</span>`;
-            if (statusSummary.length > 0) titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
-            const description = impactDetails.length > 0 ? impactDetails.join('<br>') : `All teams are fully covered.`;
-            impactEvents.push({ title: titleHtml, start: currentDateStr, allDay: true, className: statusClass, extendedProps: { description, sortPriority: 2 } });
-        };
-        appData.customers.forEach(customer => checkEntity(customer, false));
-        appData.regions.forEach(region => checkEntity(region, true));
+        });
+
+        // -----------------------------------------------------------------
+        // 2. Build the actual FullCalendar event object
+        // -----------------------------------------------------------------
+        const title =
+            (isRegion ? '[Region] ' : '') + entity.name; // plain text version
+        const statusClass = `impact-event impact-${worstStatus}`;
+
+        const titleHtml = `
+            <span class="fc-event-title-main impact-${worstStatus}">
+                ${title}
+            </span>
+            ${
+                statusSummary.length
+                    ? `<span class="fc-event-status-details">${statusSummary.join(
+                          ' | '
+                      )}</span>`
+                    : ''
+            }
+        `;
+
+        // --- Priority math: lower number = higher priority ---
+        const typeOrder = isRegion ? 0 : 1; // region before customer
+        const sortPriority = statusOrder[worstStatus] * 10 + typeOrder;
+
+        impactEvents.push({
+            title: titleHtml,
+            start: currentDateStr,
+            allDay: true,
+            // Ensure red events are never collapsed
+            display: worstStatus === 'critical' ? 'block' : 'auto',
+            className: statusClass,
+            extendedProps: {
+                description:
+                    impactDetails.length > 0
+                        ? impactDetails.join('<br>')
+                        : 'All teams are fully covered.',
+                sortPriority,   // 👉 used by eventOrder
+                type: isRegion ? 'region' : 'customer',
+                status: worstStatus
+            }
+        });
+    };
+
+    // -----------------------------------------------------------------
+    // Loop every day in range and every entity
+    // -----------------------------------------------------------------
+    for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
+        appData.customers.forEach(cust => buildEventForEntity(cust, false, day));
+        appData.regions.forEach(reg => buildEventForEntity(reg, true, day));
     }
+
     return impactEvents;
 }
 
