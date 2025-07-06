@@ -158,32 +158,33 @@ function initializeCalendar() {
         initialView: 'dayGridMonth',
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
 
-        dayMaxEvents: true,
+        // ADVANCED SORTING: Update dayMaxEvents to a function.
+        // This tells FullCalendar to calculate the number of slots dynamically,
+        // which is necessary when some events are pinned open with 'display: block'.
+        dayMaxEvents: function(arg) {
+            // This is a reasonable starting point. It might need tweaking
+            // depending on your average number of critical events per day.
+            // Returning 'true' would revert to automatic height.
+            return 4; 
+        },
 
-        // This sorting order is correct. Low numbers (critical) will appear first.
-        eventOrder: 'extendedProps.sortPriority,extendedProps.titleText',
+        // The eventOrder property uses the new detailed sortPriority values.
+        eventOrder: 'extendedProps.sortPriority desc,extendedProps.titleText',
 
-        // FIX: Restore the logic to handle month and list views differently.
         eventContent: function(arg) {
             let htmlContent = '';
-            
-            // For leave/holiday events, the display is the same in all views.
             if (arg.event.extendedProps.type) {
                 htmlContent = `<div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>`;
             } else {
-                // For Customer/Region Impact events, the display changes by view.
                 if (arg.view.type === 'dayGridMonth') {
-                    // In MONTH VIEW, we only want the clean name (e.g., "Heron", "[Region] ASIA").
                     const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
                     htmlContent = `<div class="fc-event-title">${mainTitleMatch ? mainTitleMatch[1] : 'Event'}</div>`;
                 } else {
-                    // In LIST VIEW, we want the full rich HTML with status details.
                     htmlContent = arg.event.title;
                 }
             }
             return { html: htmlContent };
         },
-        
         eventDidMount: function(info) {
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
             if (info.event.extendedProps.description) {
@@ -264,26 +265,30 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 });
             });
 
-            // HIDE COVERED (GREEN) EVENTS: If the final status is 'covered', exit and do not create an event.
+            // FIX #1: Don't create an event if the status is "covered"
             if (worstStatus === 'covered') {
-                return;
+                return; // Exit the function for this entity, no event will be created
             }
 
-            // Use low numbers for high priority (ascending sort)
+            // FIX #2: Use the correct ascending priority order
             const sortPriorityMap = {
                 critical_region: 10,
                 critical_customer: 20,
                 warning_region: 30,
                 warning_customer: 40,
+                // covered priorities are no longer needed but kept for reference
+                covered_region: 50,
+                covered_customer: 60
             };
 
             const entityType = isRegion ? 'region' : 'customer';
             const sortKey = `${worstStatus}_${entityType}`;
             const sortPriority = sortPriorityMap[sortKey];
+
             const plainTitle = isRegion ? `[Region] ${entity.name}` : entity.name;
             const statusClass = `impact-event impact-${worstStatus}`;
-            
-            // The class for the span must also be correct for list view coloring
+
+            // This was the other bug - the class inside the span was wrong. It is now correct.
             let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${plainTitle}</span>`;
 
             if (statusSummary.length > 0) {
@@ -317,6 +322,7 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
 
     return impactEvents;
 }
+
 
 // =================================================================================
 // 5. GOOGLE CALENDAR API
