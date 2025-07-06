@@ -24,6 +24,12 @@ body {
     --status-covered: #2a9d8f;
     --leave-bg-color: #e9ecef;
     --leave-text-color: #495057;
+
+    /* ADD THESE TWO NEW VARIABLES HERE */
+    --vacation-bg-color: #e6f3ff;
+    --vacation-text-color: #004085;
+    --holiday-bg-color: #e9f5e9;
+    --holiday-text-color: #155724;
 }
 
 .fc .fc-button-primary {
@@ -76,6 +82,20 @@ body {
     content: '•';
     margin-right: 4px;
     opacity: 0.8;
+}
+
+/* 
+They will override the default gray for specific types.
+*/
+.fc-event.vacation-event {
+    background-color: var(--vacation-bg-color);
+    color: var(--vacation-text-color);
+    border-color: var(--vacation-bg-color);
+}
+.fc-event.holiday-event {
+    background-color: var(--holiday-bg-color);
+    color: var(--holiday-text-color);
+    border-color: var(--holiday-bg-color);
 }
 
 /* 4. "+n more" POPOVER STYLES */
