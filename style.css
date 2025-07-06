@@ -90,7 +90,14 @@ They will override the default gray for specific types.
 .fc-event.vacation-event {
     background-color: var(--vacation-bg-color);
     color: var(--vacation-text-color);
-    border-color: var(--vacation-bg-color);
+    border: 1px solid #90c2e7; /* adds definition */
+    font-weight: 600;
+    font-size: 0.8em;
+    padding: 3px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .fc-event.holiday-event {
     background-color: var(--holiday-bg-color);
