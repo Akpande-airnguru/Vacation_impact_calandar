@@ -265,30 +265,26 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 });
             });
 
-            // FIX #1: Don't create an event if the status is "covered"
+            // HIDE COVERED (GREEN) EVENTS: If the final status is 'covered', exit and do not create an event.
             if (worstStatus === 'covered') {
-                return; // Exit the function for this entity, no event will be created
+                return;
             }
 
-            // FIX #2: Use the correct ascending priority order
+            // Use low numbers for high priority (ascending sort)
             const sortPriorityMap = {
                 critical_region: 10,
                 critical_customer: 20,
                 warning_region: 30,
                 warning_customer: 40,
-                // covered priorities are no longer needed but kept for reference
-                covered_region: 50,
-                covered_customer: 60
             };
 
             const entityType = isRegion ? 'region' : 'customer';
             const sortKey = `${worstStatus}_${entityType}`;
             const sortPriority = sortPriorityMap[sortKey];
-
             const plainTitle = isRegion ? `[Region] ${entity.name}` : entity.name;
             const statusClass = `impact-event impact-${worstStatus}`;
-
-            // This was the other bug - the class inside the span was wrong. It is now correct.
+            
+            // The class for the span must also be correct for list view coloring
             let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${plainTitle}</span>`;
 
             if (statusSummary.length > 0) {
@@ -322,7 +318,6 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
 
     return impactEvents;
 }
-
 
 // =================================================================================
 // 5. GOOGLE CALENDAR API
