@@ -356,7 +356,7 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
     }
 }
 
-sync function fetchGoogleCalendarData(fetchInfo) {
+async function fetchGoogleCalendarData(fetchInfo) {
     const { vacationCalendarId, holidayCalendarId } = appData.settings;
     if (gapi.client.getToken() === null) return [];
     const { startStr, endStr } = fetchInfo;
