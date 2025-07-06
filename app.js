@@ -169,7 +169,7 @@ function initializeCalendar() {
         },
 
         // The eventOrder property uses the new detailed sortPriority values.
-        eventOrder: 'extendedProps.sortPriority,extendedProps.titleText',
+        eventOrder: 'extendedProps.sortPriority desc,extendedProps.titleText',
 
         eventContent: function(arg) {
             let htmlContent = '';
