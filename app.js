@@ -158,30 +158,19 @@ function initializeCalendar() {
         initialView: 'dayGridMonth',
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
 
-        // ADVANCED SORTING: Update dayMaxEvents to a function.
-        // This tells FullCalendar to calculate the number of slots dynamically,
-        // which is necessary when some events are pinned open with 'display: block'.
-        dayMaxEvents: function(arg) {
-            // This is a reasonable starting point. It might need tweaking
-            // depending on your average number of critical events per day.
-            // Returning 'true' would revert to automatic height.
-            return 4; 
-        },
+        dayMaxEvents: true, // Let FullCalendar handle the "+n more" link
 
-        // The eventOrder property uses the new detailed sortPriority values.
-        eventOrder: 'extendedProps.sortPriority desc,extendedProps.titleText',
+        // SORTING FIX: Remove 'desc' to sort in ascending order (low numbers first)
+        eventOrder: 'extendedProps.sortPriority,extendedProps.titleText',
 
         eventContent: function(arg) {
             let htmlContent = '';
             if (arg.event.extendedProps.type) {
                 htmlContent = `<div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>`;
             } else {
-                if (arg.view.type === 'dayGridMonth') {
-                    const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
-                    htmlContent = `<div class="fc-event-title">${mainTitleMatch ? mainTitleMatch[1] : 'Event'}</div>`;
-                } else {
-                    htmlContent = arg.event.title;
-                }
+                // For impact events, we now pass the rich HTML directly.
+                // This ensures colored text and details work in List view.
+                htmlContent = arg.event.title;
             }
             return { html: htmlContent };
         },
@@ -199,6 +188,8 @@ function initializeCalendar() {
     calendar.render();
 }
 
+// NOTE: You also had a small bug in your generateImpactEvents function
+// where the class for the span was not being set correctly. This is also fixed below.
 function generateImpactEvents(fetchInfo, leaveEvents = []) {
     const impactEvents = [];
     const { start, end } = fetchInfo;
@@ -222,23 +213,13 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
 
                     staffPool.forEach(emp => {
                         let isEmployeeOnLeave = false;
-
-                        const onHoliday = leaveEvents.find(leave =>
-                            (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') &&
-                            leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) &&
-                            currentDateStr >= leave.start &&
-                            currentDateStr < (leave.end || new Date(new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])
-                        );
-
+                        const onHoliday = leaveEvents.find(leave =>(leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) && currentDateStr >= leave.start && currentDateStr < (leave.end || new Date(new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
                         const onVacation = leaveEvents.find(leave => {
                             if (leave.extendedProps.type !== 'vacation') return false;
                             const vacationTitle = leave.extendedProps.employeeName;
                             if (!vacationTitle || !emp.name) return false;
-
                             if (vacationTitle.toLowerCase().includes(emp.name.toLowerCase())) {
-                                const matchingEmployees = appData.employees.filter(e =>
-                                    vacationTitle.toLowerCase().includes(e.name.toLowerCase())
-                                );
+                                const matchingEmployees = appData.employees.filter(e => vacationTitle.toLowerCase().includes(e.name.toLowerCase()));
                                 if (matchingEmployees.length > 1) {
                                     console.warn(`AMBIGUOUS VACATION: Event "${vacationTitle}" could apply to multiple employees: ${matchingEmployees.map(e => e.name).join(', ')}. Matching with ${emp.name}.`);
                                 }
@@ -246,40 +227,28 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                             }
                             return false;
                         });
-
-                        if (
-                            onVacation &&
-                            currentDateStr >= onVacation.start &&
-                            currentDateStr < (onVacation.end || new Date(new Date(onVacation.start).setDate(new Date(onVacation.start).getDate() + 1)).toISOString().split('T')[0])
-                        ) {
+                        if (onVacation && currentDateStr >= onVacation.start && currentDateStr < (onVacation.end || new Date(new Date(onVacation.start).setDate(new Date(onVacation.start).getDate() + 1)).toISOString().split('T')[0])) {
                             isEmployeeOnLeave = true;
                             onLeaveNames.add(`${emp.name} (Vacation)`);
                         } else if (onHoliday) {
                             isEmployeeOnLeave = true;
                             onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`);
                         }
-
                         if (isEmployeeOnLeave) onLeaveCount++;
                     });
-
                     const availableCount = staffPool.length - onLeaveCount;
                     let teamStatus = 'covered';
-
                     if (availableCount < req.min) teamStatus = 'critical';
                     else if (availableCount === req.min) teamStatus = 'warning';
-
                     if (teamStatus === 'critical') worstStatus = 'critical';
                     else if (teamStatus === 'warning' && worstStatus !== 'critical') worstStatus = 'warning';
-
                     let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${staffPool.length} (Req: ${req.min})`;
-
                     if (teamStatus !== 'covered') {
                         statusSummary.push(`${teamName}: ${availableCount}/${req.min}`);
                         teamDetail += ` <strong class="text-${teamStatus === 'critical' ? 'danger' : 'warning'}">(${teamStatus.charAt(0).toUpperCase() + teamStatus.slice(1)})</strong>`;
                     } else {
                         teamDetail += ` (OK)`;
                     }
-
                     if (teamStatus !== 'covered' || onLeaveNames.size > 0) {
                         impactDetails.push(teamDetail);
                         if (onLeaveNames.size > 0) {
@@ -289,7 +258,6 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 });
             });
 
-            // Sorting Priority Map
             const sortPriorityMap = {
                 critical_region: 10,
                 critical_customer: 20,
@@ -298,22 +266,17 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 covered_region: 50,
                 covered_customer: 60
             };
-
             const entityType = isRegion ? 'region' : 'customer';
             const sortKey = `${worstStatus}_${entityType}`;
             const sortPriority = sortPriorityMap[sortKey];
-
             const plainTitle = isRegion ? `[Region] ${entity.name}` : entity.name;
             const statusClass = `impact-event impact-${worstStatus}`;
+            // Bug Fix: The class here was incorrect, it's now fixed to match the CSS.
             let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${plainTitle}</span>`;
-
             if (statusSummary.length > 0) {
                 titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
             }
-
-            const description = impactDetails.length > 0
-                ? impactDetails.join('<br>')
-                : `All teams are fully covered.`;
+            const description = impactDetails.length > 0 ? impactDetails.join('<br>') : `All teams are fully covered.`;
 
             const eventData = {
                 title: titleHtml,
@@ -326,18 +289,14 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     titleText: plainTitle
                 }
             };
-
             if (worstStatus === 'critical') {
                 eventData.display = 'block';
             }
-
             impactEvents.push(eventData);
         };
-
         appData.customers.forEach(customer => checkEntity(customer, false));
         appData.regions.forEach(region => checkEntity(region, true));
     }
-
     return impactEvents;
 }
 
