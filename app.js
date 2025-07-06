@@ -158,17 +158,22 @@ function initializeCalendar() {
         initialView: 'dayGridMonth',
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
 
+        // This allows FullCalendar to automatically handle the "+n more" link,
+        // which is necessary when using `display: 'block'` for some events.
         dayMaxEvents: true,
 
-        // SORTING FIX: This is the definitive fix.
-        // Remove 'desc' to sort by priority number in ASCENDING order (10, 20, 30...).
+        // SORTING FIX: Remove 'desc' to sort in ascending order (low numbers first).
+        // This is the only line that needs to be changed in this function.
         eventOrder: 'extendedProps.sortPriority,extendedProps.titleText',
 
         eventContent: function(arg) {
             let htmlContent = '';
+            // For leave/holiday events, show the description (which includes country codes).
             if (arg.event.extendedProps.type) {
                 htmlContent = `<div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>`;
             } else {
+                // For impact events, use the rich HTML from the title property.
+                // This ensures our custom-styled spans and details show up correctly in all views.
                 htmlContent = arg.event.title;
             }
             return { html: htmlContent };
@@ -186,6 +191,7 @@ function initializeCalendar() {
     calendar.setOption('events', fetchCalendarEvents);
     calendar.render();
 }
+
 function generateImpactEvents(fetchInfo, leaveEvents = []) {
     const impactEvents = [];
     const { start, end } = fetchInfo;
