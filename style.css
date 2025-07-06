@@ -210,3 +210,23 @@ body {
     border-radius: 6px;
     font-size: 0.9em;
 }
+
+.fc-daygrid-event.vacation-event {
+    background-color: #bfdff8 !important;  /* dark enough for clear contrast */
+    border: 1px solid #5ca6d7 !important;
+    font-weight: 700;
+    font-size: 0.82em;
+    padding: 4px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* 👇👇 THIS IS THE CRITICAL LINE FOR TEXT CONTRAST 👇👇 */
+.fc-daygrid-event.vacation-event .fc-event-title {
+    color: #00111f !important; /* deep blackish-blue */
+    font-weight: 800;
+    opacity: 1 !important; /* prevent inherited fading */
+}
