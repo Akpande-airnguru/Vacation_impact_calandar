@@ -202,7 +202,6 @@ function initializeCalendar() {
 
     return { html: htmlContent };
 },
-        },
         eventDidMount: function(info) {
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
             if (info.event.extendedProps.description) {
