@@ -172,18 +172,36 @@ function initializeCalendar() {
         eventOrder: 'extendedProps.sortPriority desc,extendedProps.titleText',
 
         eventContent: function(arg) {
-            let htmlContent = '';
-            if (arg.event.extendedProps.type) {
-                htmlContent = `<div class="fc-event-title">${arg.event.extendedProps.description || arg.event.title}</div>`;
-            } else {
-                if (arg.view.type === 'dayGridMonth') {
-                    const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
-                    htmlContent = `<div class="fc-event-title">${mainTitleMatch ? mainTitleMatch[1] : 'Event'}</div>`;
-                } else {
-                    htmlContent = arg.event.title;
-                }
-            }
-            return { html: htmlContent };
+    let htmlContent = '';
+
+    const viewType = arg.view.type;
+    const { type, description } = arg.event.extendedProps;
+
+    if (type === 'vacation' || type === 'officialHoliday' || type === 'publicHoliday') {
+        // Vacation or Holiday
+        let emoji = '';
+        if (type === 'vacation') emoji = '🌴';
+        else emoji = '🎉';
+
+        // LIST VIEW STYLING
+        if (viewType.startsWith('list')) {
+            htmlContent = `<div class="fc-event-title">${emoji} ${description || arg.event.title}</div>`;
+        } else {
+            // Month view styling already handled by CSS
+            htmlContent = `<div class="fc-event-title">${description || arg.event.title}</div>`;
+        }
+    } else {
+        // Impact events
+        if (viewType === 'dayGridMonth') {
+            const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
+            htmlContent = `<div class="fc-event-title">${mainTitleMatch ? mainTitleMatch[1] : 'Event'}</div>`;
+        } else {
+            htmlContent = arg.event.title;
+        }
+    }
+
+    return { html: htmlContent };
+},
         },
         eventDidMount: function(info) {
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
