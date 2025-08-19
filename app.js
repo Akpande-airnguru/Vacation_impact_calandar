@@ -49,9 +49,7 @@ function setupEventListeners() {
         initializeCharts();
         updateDashboardAndCharts();
     });
-    // *** FIX: Added listener for the new forecast date picker ***
     document.getElementById('forecast-start-date').addEventListener('change', updateDashboardAndCharts);
-
     document.getElementById('csv-import').addEventListener('change', handleCsvImport);
     document.getElementById('download-template-btn').addEventListener('click', downloadCsvTemplate);
     document.getElementById('export-data-btn').addEventListener('click', handleDataExport);
@@ -206,38 +204,34 @@ async function fetchGoogleCalendarData(fetchInfo) { const { vacationCalendarId, 
 // 7. DASHBOARD & CHARTS LOGIC (FIXED)
 // =================================================================================
 
-function initializeCharts() {
-    if (issuesChart) issuesChart.destroy(); if (leaveChart) leaveChart.destroy();
-    const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
-    const textColor = isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)';
-    const forecastDateInput = document.getElementById('forecast-start-date');
-    if (!forecastDateInput.value) {
-        forecastDateInput.value = new Date().toISOString().split('T')[0];
-    }
-    issuesChart = new Chart(document.getElementById('issues-chart'), { type: 'bar', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: false }, legend: { display: false }, tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${context.raw}` } } }, scales: { x: { stacked: true, ticks: { color: textColor } }, y: { stacked: true, beginAtZero: true, ticks: { color: textColor, stepSize: 1 } } } } });
-    leaveChart = new Chart(document.getElementById('leave-chart'), { type: 'doughnut', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Leave Types', color: textColor }, legend: { position: 'right', labels: { color: textColor } }, tooltip: { callbacks: { label: (context) => { const label = context.label || ''; const details = context.chart.data.tooltipDetails[label]; return details && details.length ? `${label}: ${details.length}` : label; }, afterLabel: (context) => { const details = context.chart.data.tooltipDetails[context.label]; return details && details.length ? details.slice(0, 5).join('\n') + (details.length > 5 ? '\n...' : '') : ''; } } } } } });
-}
+function initializeCharts() { if (issuesChart) issuesChart.destroy(); if (leaveChart) leaveChart.destroy(); const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark'; const textColor = isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)'; const forecastDateInput = document.getElementById('forecast-start-date'); if (!forecastDateInput.value) { forecastDateInput.value = new Date().toISOString().split('T')[0]; } issuesChart = new Chart(document.getElementById('issues-chart'), { type: 'bar', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: false }, legend: { display: false }, tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${context.raw}` } } }, scales: { x: { stacked: true, ticks: { color: textColor } }, y: { stacked: true, beginAtZero: true, ticks: { color: textColor, stepSize: 1 } } } } }); leaveChart = new Chart(document.getElementById('leave-chart'), { type: 'doughnut', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Leave Types', color: textColor }, legend: { position: 'right', labels: { color: textColor } }, tooltip: { callbacks: { label: (context) => { const label = context.label || ''; const details = context.chart.data.tooltipDetails[label]; return details && details.length ? `${label}: ${details.length}` : label; }, afterLabel: (context) => { const details = context.chart.data.tooltipDetails[context.label]; return details && details.length ? details.slice(0, 5).join('\n') + (details.length > 5 ? '\n...' : '') : ''; } } } } } }); }
 
 async function updateDashboardAndCharts() {
     const allEvents = calendar.getEvents();
     if (!allEvents.length && gapi.client.getToken()) return;
+
     const todayStr = new Date().toISOString().split('T')[0];
     const impactEvents = allEvents.filter(e => e.extendedProps.type === 'impact');
     const leaveEvents = allEvents.filter(e => e.extendedProps.type !== 'impact');
     const view = calendar.view;
 
-    const onLeaveTodayEvents = leaveEvents.filter(e => { const start = e.start.toISOString().split('T')[0]; const end = e.end ? e.end.toISOString().split('T')[0] : start; return todayStr >= start && todayStr < end; });
+    const onLeaveTodayEvents = leaveEvents.filter(e => { const start = e.startStr.split('T')[0]; const end = e.endStr ? e.endStr.split('T')[0] : start; return todayStr >= start && todayStr < end; });
     const onLeaveNames = new Set(onLeaveTodayEvents.map(e => e.extendedProps.employeeName).filter(Boolean));
     document.getElementById('kpi-on-leave').textContent = onLeaveNames.size;
     
     const understaffedInView = impactEvents.filter(e => e.extendedProps.status === 'critical' && e.start >= view.activeStart && e.start < view.activeEnd);
-    const understaffedDays = new Set(understaffedInView.map(e=>e.start.toISOString().split('T')[0]));
+    const understaffedDays = new Set(understaffedInView.map(e=>e.startStr.split('T')[0]));
     const understaffedNames = new Set(understaffedInView.map(e => e.extendedProps.entityName));
     document.getElementById('kpi-understaffed').textContent = understaffedDays.size;
     document.getElementById('kpi-understaffed-range').textContent = `(${view.title})`;
 
+    // *** FIX: At Risk KPI must use its own forecast calculation ***
+    const forecastStart = new Date(); const forecastEnd = new Date(); forecastEnd.setDate(forecastStart.getDate() + 14);
+    const forecastLeaveEvents = await fetchGoogleCalendarData({ start: forecastStart, end: forecastEnd, startStr: forecastStart.toISOString(), endStr: forecastEnd.toISOString()});
+    const forecastImpactEvents = generateImpactEvents({ start: forecastStart, end: forecastEnd }, forecastLeaveEvents);
+    
     const nextSevenDays = Array.from({length: 7}, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d.toISOString().split('T')[0]; });
-    const atRiskInNext7Days = impactEvents.filter(e => nextSevenDays.includes(e.start.toISOString().split('T')[0]));
+    const atRiskInNext7Days = forecastImpactEvents.filter(e => nextSevenDays.includes(e.start));
     const atRiskNames = new Set(atRiskInNext7Days.map(e => e.extendedProps.entityName));
     document.getElementById('kpi-at-risk').textContent = atRiskNames.size;
     
@@ -248,15 +242,19 @@ async function updateDashboardAndCharts() {
         tooltip.setContent({ '.tooltip-inner': data.set.size > 0 ? Array.from(data.set).join('\n') : data.default });
     }
     
-    // Dynamic forecast chart
-    const forecastStartDate = new Date(document.getElementById('forecast-start-date').value);
+    // *** FIX: Forecast chart must use its own calculated data ***
+    const dynamicForecastStart = new Date(document.getElementById('forecast-start-date').value);
+    const dynamicForecastEnd = new Date(dynamicForecastStart);
+    dynamicForecastEnd.setDate(dynamicForecastStart.getDate() + 14);
+    const dynamicLeave = await fetchGoogleCalendarData({ start: dynamicForecastStart, end: dynamicForecastEnd, startStr: dynamicForecastStart.toISOString(), endStr: dynamicForecastEnd.toISOString()});
+    const dynamicImpact = generateImpactEvents({ start: dynamicForecastStart, end: dynamicForecastEnd }, dynamicLeave);
+    
     const forecastCounts = {};
-    for (let i = 0; i < 14; i++) { const d = new Date(forecastStartDate); d.setDate(d.getDate() + i); const dateStr = d.toISOString().split('T')[0]; const dateLabel = dateStr.substring(5); forecastCounts[dateLabel] = { warning: 0, critical: 0 }; impactEvents.forEach(e => { if (e.start.toISOString().split('T')[0] === dateStr) forecastCounts[dateLabel][e.extendedProps.status]++; }); }
+    for (let i = 0; i < 14; i++) { const d = new Date(dynamicForecastStart); d.setDate(d.getDate() + i); const dateStr = d.toISOString().split('T')[0]; const dateLabel = dateStr.substring(5); forecastCounts[dateLabel] = { warning: 0, critical: 0 }; dynamicImpact.forEach(e => { if (e.start === dateStr) forecastCounts[dateLabel][e.extendedProps.status]++; }); }
     issuesChart.data.labels = Object.keys(forecastCounts);
     issuesChart.data.datasets = [{ label: 'Warning', data: Object.values(forecastCounts).map(d => d.warning), backgroundColor: 'rgba(255, 183, 3, 0.7)' }, { label: 'Critical', data: Object.values(forecastCounts).map(d => d.critical), backgroundColor: 'rgba(217, 4, 41, 0.7)' }];
     issuesChart.update();
 
-    // Leave Types Chart
     const leaveDetails = { 'Vacation': new Set(), 'Official Holiday': new Set(), 'Public Holiday': new Set() };
     leaveEvents.forEach(e => { const typeLabel = e.extendedProps.type.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()); if (leaveDetails[typeLabel]) leaveDetails[typeLabel].add(e.extendedProps.description); });
     leaveChart.data.labels = Object.keys(leaveDetails);
@@ -265,6 +263,7 @@ async function updateDashboardAndCharts() {
     leaveChart.options.plugins.title.text = `Leave Types (${view.title})`;
     leaveChart.update();
 }
+
 
 // =================================================================================
 // 8. REPORTING & EXPORTING
