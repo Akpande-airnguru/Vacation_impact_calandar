@@ -49,6 +49,9 @@ function setupEventListeners() {
         initializeCharts();
         updateDashboardAndCharts();
     });
+    // *** FIX: Added listener for the new forecast date picker ***
+    document.getElementById('forecast-start-date').addEventListener('change', updateDashboardAndCharts);
+
     document.getElementById('csv-import').addEventListener('change', handleCsvImport);
     document.getElementById('download-template-btn').addEventListener('click', downloadCsvTemplate);
     document.getElementById('export-data-btn').addEventListener('click', handleDataExport);
@@ -152,7 +155,7 @@ function parseGenericFields(row) { const fields = {}; for (let i = 1; i <= 4; i+
 function processGenericCsvData(data) { appData.customers = []; appData.employees = []; appData.regions = []; const generateId = () => Date.now() + Math.random(); data.forEach(row => { const type = row.type?.toLowerCase().trim(); const fields = parseGenericFields(row); if (type === 'employee') { appData.employees.push({ id: generateId(), name: row.name, country: row.country, team: fields.team }); } else if (type === 'customer' || type === 'region') { const requirement = { teams: (fields.required_team || '').split(',').map(t => t.trim()), min: parseInt(fields.required_employee_per_team, 10) || 1 }; if (type === 'customer') { let customer = appData.customers.find(c => c.name === row.name); if (!customer) { customer = { id: generateId(), name: row.name, country: row.country, requirements: [] }; appData.customers.push(customer); } customer.requirements.push(requirement); } else { let region = appData.regions.find(r => r.name === row.name); if (!region) { region = { id: generateId(), name: row.name, countries: (row.country || '').split(',').map(c => c.trim()), requirements: [] }; appData.regions.push(region); } region.requirements.push(requirement); } } }); }
 
 // =================================================================================
-// 5. CALENDAR LOGIC ENGINE (FIXED)
+// 5. CALENDAR LOGIC ENGINE
 // =================================================================================
 
 function initializeCalendar() {
@@ -161,10 +164,9 @@ function initializeCalendar() {
         initialView: 'dayGridMonth',
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
         views: { listWeek: { omitZeroEvents: false } },
-        dayMaxEvents: false, // **FIX**: Show all events, don't collapse
+        dayMaxEvents: false,
         eventOrder: 'extendedProps.sortPriority desc,title',
         loading: (isLoading) => document.getElementById('calendar-loader').classList.toggle('visible', isLoading),
-        // **FIX**: Use eventsSet callback to prevent race conditions
         eventsSet: () => updateDashboardAndCharts(),
         dayCellDidMount: (arg) => {
             const dateStr = arg.date.toISOString().split('T')[0];
@@ -185,7 +187,7 @@ function initializeCalendar() {
 function generateImpactEvents(fetchInfo, leaveEvents = []) { const impactEvents = []; dailyStatusHeatmap = {}; const { start, end } = fetchInfo; for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) { const currentDateStr = day.toISOString().split('T')[0]; const checkEntity = (entity, isRegion = false) => { let worstStatus = 'covered'; const detailedDescriptions = []; entity.requirements.forEach(req => req.teams.forEach(teamName => { const staffPool = isRegion ? appData.employees.filter(e => e.team === teamName && entity.countries.includes(e.country)) : appData.employees.filter(e => e.team === teamName); const onLeave = staffPool.filter(emp => leaveEvents.some(leave => (leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) || leave.extendedProps.employeeName?.toLowerCase().includes(emp.name.toLowerCase())) && currentDateStr >= leave.start && currentDateStr < (leave.end || new Date(new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]))); const availableCount = staffPool.length - onLeave.length; let teamStatus = 'covered'; if (availableCount < req.min) teamStatus = 'critical'; else if (availableCount === req.min) teamStatus = 'warning'; if (teamStatus === 'critical') worstStatus = 'critical'; else if (teamStatus === 'warning' && worstStatus !== 'critical') worstStatus = 'warning'; if (teamStatus !== 'covered') { let detail = `<b>Team ${teamName}:</b> ${availableCount}/${staffPool.length} (Req: ${req.min})`; if (onLeave.length > 0) detail += `<br><small><i>- On Leave: ${onLeave.map(e => e.name).join(', ')}</i></small>`; detailedDescriptions.push(detail); } })); if (worstStatus === 'critical' || (worstStatus === 'warning' && dailyStatusHeatmap[currentDateStr] !== 'critical')) dailyStatusHeatmap[currentDateStr] = worstStatus; if (worstStatus === 'covered') return; const sortPriorityMap = { critical_region: 10, critical_customer: 20, warning_region: 30, warning_customer: 40 }; const entityType = isRegion ? 'region' : 'customer'; const plainTitle = isRegion ? `[Region] ${entity.name}` : entity.name; const icon = worstStatus === 'critical' ? '<i class="bi bi-exclamation-octagon-fill text-danger"></i>' : '<i class="bi bi-exclamation-triangle-fill text-warning"></i>'; const titleHtml = `<div class="fc-event-title">${icon}<span class="ms-2">${plainTitle}</span></div>`; impactEvents.push({ title: plainTitle, start: currentDateStr, allDay: true, className: `impact-event impact-${worstStatus}`, extendedProps: { description: `<strong>${plainTitle} (${worstStatus.toUpperCase()})</strong><hr class="my-1">${detailedDescriptions.join('<hr class="my-1">')}`, customHtml: titleHtml, sortPriority: sortPriorityMap[`${worstStatus}_${entityType}`], status: worstStatus, type: 'impact', entityName: entity.name }}); }; appData.customers.forEach(customer => checkEntity(customer, false)); appData.regions.forEach(region => checkEntity(region, true)); } return impactEvents; }
 
 // =================================================================================
-// 6. GOOGLE CALENDAR API & CORE FETCH (FIXED)
+// 6. GOOGLE CALENDAR API & CORE FETCH
 // =================================================================================
 
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
@@ -204,12 +206,21 @@ async function fetchGoogleCalendarData(fetchInfo) { const { vacationCalendarId, 
 // 7. DASHBOARD & CHARTS LOGIC (FIXED)
 // =================================================================================
 
-function initializeCharts() { if (issuesChart) issuesChart.destroy(); if (leaveChart) leaveChart.destroy(); const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark'; const textColor = isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)'; issuesChart = new Chart(document.getElementById('issues-chart'), { type: 'bar', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Coverage Forecast (Next 14 Days)', color: textColor }, legend: { display: false }, tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${context.raw}` } } }, scales: { x: { stacked: true, ticks: { color: textColor } }, y: { stacked: true, beginAtZero: true, ticks: { color: textColor, stepSize: 1 } } } } }); leaveChart = new Chart(document.getElementById('leave-chart'), { type: 'doughnut', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Leave Types', color: textColor }, legend: { position: 'right', labels: { color: textColor } }, tooltip: { callbacks: { label: (context) => { const label = context.label || ''; const details = context.chart.data.tooltipDetails[label]; return details && details.length ? `${label}: ${details.length}` : label; }, afterLabel: (context) => { const details = context.chart.data.tooltipDetails[context.label]; return details && details.length ? details.slice(0, 5).join('\n') + (details.length > 5 ? '\n...' : '') : ''; } } } } } }); }
+function initializeCharts() {
+    if (issuesChart) issuesChart.destroy(); if (leaveChart) leaveChart.destroy();
+    const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+    const textColor = isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)';
+    const forecastDateInput = document.getElementById('forecast-start-date');
+    if (!forecastDateInput.value) {
+        forecastDateInput.value = new Date().toISOString().split('T')[0];
+    }
+    issuesChart = new Chart(document.getElementById('issues-chart'), { type: 'bar', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: false }, legend: { display: false }, tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${context.raw}` } } }, scales: { x: { stacked: true, ticks: { color: textColor } }, y: { stacked: true, beginAtZero: true, ticks: { color: textColor, stepSize: 1 } } } } });
+    leaveChart = new Chart(document.getElementById('leave-chart'), { type: 'doughnut', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Leave Types', color: textColor }, legend: { position: 'right', labels: { color: textColor } }, tooltip: { callbacks: { label: (context) => { const label = context.label || ''; const details = context.chart.data.tooltipDetails[label]; return details && details.length ? `${label}: ${details.length}` : label; }, afterLabel: (context) => { const details = context.chart.data.tooltipDetails[context.label]; return details && details.length ? details.slice(0, 5).join('\n') + (details.length > 5 ? '\n...' : '') : ''; } } } } } });
+}
 
 async function updateDashboardAndCharts() {
     const allEvents = calendar.getEvents();
     if (!allEvents.length && gapi.client.getToken()) return;
-
     const todayStr = new Date().toISOString().split('T')[0];
     const impactEvents = allEvents.filter(e => e.extendedProps.type === 'impact');
     const leaveEvents = allEvents.filter(e => e.extendedProps.type !== 'impact');
@@ -237,12 +248,15 @@ async function updateDashboardAndCharts() {
         tooltip.setContent({ '.tooltip-inner': data.set.size > 0 ? Array.from(data.set).join('\n') : data.default });
     }
     
+    // Dynamic forecast chart
+    const forecastStartDate = new Date(document.getElementById('forecast-start-date').value);
     const forecastCounts = {};
-    for (let i = 0; i < 14; i++) { const d = new Date(); d.setDate(d.getDate() + i); const dateStr = d.toISOString().split('T')[0]; const dateLabel = dateStr.substring(5); forecastCounts[dateLabel] = { warning: 0, critical: 0 }; impactEvents.forEach(e => { if (e.start.toISOString().split('T')[0] === dateStr) forecastCounts[dateLabel][e.extendedProps.status]++; }); }
+    for (let i = 0; i < 14; i++) { const d = new Date(forecastStartDate); d.setDate(d.getDate() + i); const dateStr = d.toISOString().split('T')[0]; const dateLabel = dateStr.substring(5); forecastCounts[dateLabel] = { warning: 0, critical: 0 }; impactEvents.forEach(e => { if (e.start.toISOString().split('T')[0] === dateStr) forecastCounts[dateLabel][e.extendedProps.status]++; }); }
     issuesChart.data.labels = Object.keys(forecastCounts);
     issuesChart.data.datasets = [{ label: 'Warning', data: Object.values(forecastCounts).map(d => d.warning), backgroundColor: 'rgba(255, 183, 3, 0.7)' }, { label: 'Critical', data: Object.values(forecastCounts).map(d => d.critical), backgroundColor: 'rgba(217, 4, 41, 0.7)' }];
     issuesChart.update();
 
+    // Leave Types Chart
     const leaveDetails = { 'Vacation': new Set(), 'Official Holiday': new Set(), 'Public Holiday': new Set() };
     leaveEvents.forEach(e => { const typeLabel = e.extendedProps.type.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()); if (leaveDetails[typeLabel]) leaveDetails[typeLabel].add(e.extendedProps.description); });
     leaveChart.data.labels = Object.keys(leaveDetails);
@@ -262,7 +276,7 @@ async function handlePdfExport() { const btn = document.getElementById('export-p
 async function handleXlsxExport() { const btn = document.getElementById('export-excel-btn'); btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>'; try { const dateRange = getExportDateRange(); if (!dateRange) return; const reportData = await generateReportData(dateRange.start, dateRange.end); const statusFilter = document.querySelector('input[name="statusFilter"]:checked').value; let filteredReportData = reportData; if (statusFilter === 'critical') filteredReportData = reportData.filter(item => item.status === 'Critical'); else if (statusFilter === 'warning') filteredReportData = reportData.filter(item => item.status === 'Warning'); if (filteredReportData.length === 0) { const statusText = statusFilter === 'both' ? '' : `'${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}' `; alert(`No ${statusText}issues found in the selected period.`); return; } const worksheet = XLSX.utils.json_to_sheet(filteredReportData); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, "Coverage Report"); XLSX.utils.sheet_add_aoa(worksheet, [["Date", "Entity Name", "Type", "Status", "Details", "Personnel on Leave"]], { origin: "A1" }); const columnWidths = [ { wch: 12 }, { wch: 25 }, { wch: 10 }, { wch: 12 }, { wch: 50 }, { wch: 60 } ]; worksheet['!cols'] = columnWidths; const dateStr = new Date().toISOString().split('T')[0]; XLSX.writeFile(workbook, `coverage_report_${dateStr}.xlsx`, { compression: true }); } catch (error) { console.error("Error generating Excel report:", error); alert("An error occurred while generating the Excel report."); } finally { btn.disabled = false; btn.innerHTML = `<i class="bi bi-file-earmark-excel-fill me-1"></i>Export Excel`; } }
 
 // =================================================================================
-// 9. GOOGLE API INITIALIZATION & AUTH (RESTORED & FIXED)
+// 9. GOOGLE API INITIALIZATION & AUTH (RESTORED)
 // =================================================================================
 
 window.gisLoaded = function() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '', }); gisInited = true; maybeEnableButtons(); };
