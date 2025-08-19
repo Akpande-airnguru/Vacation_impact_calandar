@@ -5,12 +5,13 @@
     --bs-body-bg: #f8f9fa;
     --bs-body-color: #212529;
     --bs-border-color: #dee2e6;
-    --bs-tertiary-bg: #e9ecef;
+    --bs-tertiary-bg: #f8f9fa;
     --card-bg: #ffffff;
     --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
     --kpi-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     --heatmap-warning-bg: rgba(255, 183, 3, 0.15);
     --heatmap-critical-bg: rgba(217, 4, 41, 0.1);
+    --impact-event-dark-bg: #5e666e;
     --status-critical: #d90429;
     --status-warning: #ffb703;
 }
@@ -23,7 +24,7 @@
     --card-bg: #2b3035;
     --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
     --kpi-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    --heatmap-warning-bg: rgba(255, 183, 3, 0.2);
+    --heatmap-warning-bg: rgba(255, 183, 3, 0.25);
     --heatmap-critical-bg: rgba(217, 4, 41, 0.2);
 }
 
@@ -42,9 +43,10 @@ body {
 .card-header, .modal-header, .modal-footer {
     background-color: var(--bs-body-bg);
     border-bottom: 1px solid var(--bs-border-color);
+    border-top: 1px solid var(--bs-border-color);
 }
-.bg-body-tertiary {
-    background-color: var(--bs-tertiary-bg) !important;
+.modal-content {
+    background-color: var(--card-bg);
 }
 
 /* 2. DASHBOARD & KPI STYLES */
@@ -55,7 +57,8 @@ body {
 }
 .kpi-card:hover { transform: translateY(-5px); }
 .kpi-card .card-body { padding: 1rem; }
-#issues-chart, #leave-chart { max-height: 120px; }
+.kpi-subtitle { font-size: 0.75rem; opacity: 0.8; }
+#issues-chart, #leave-chart { max-height: 125px; }
 
 /* 3. CALENDAR GLOBAL STYLES */
 #calendar {
@@ -70,58 +73,55 @@ body {
 .fc .fc-daygrid-day.day-bg-warning { background-color: var(--heatmap-warning-bg); }
 .fc .fc-daygrid-day.day-bg-critical { background-color: var(--heatmap-critical-bg); }
 
-/* 4. REFINED EVENT STYLES (WITH STATUS DOT) */
+/* 4. MONTH VIEW EVENT STYLES (REVAMPED) */
 .fc-daygrid-event {
-    border-radius: 4px;
-    padding: 3px 6px;
-    font-size: 0.85em;
-    font-weight: 500;
-    overflow: hidden;
-    cursor: pointer;
+    border-radius: 4px; margin-bottom: 3px; padding: 3px 6px;
+    font-size: 0.8em; font-weight: 500;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
-.event-content-wrapper {
+/* Impact Event Styling (Critical/Warning) */
+.fc-event.impact-event {
+    border: 1px solid rgba(0,0,0,0.2);
+    border-left-width: 4px;
+    background-color: var(--bs-tertiary-bg);
+}
+[data-bs-theme="dark"] .fc-event.impact-event {
+    background-color: var(--impact-event-dark-bg); /* Use a distinct dark color */
+    border-color: rgba(255,255,255,0.2);
+}
+.fc-event.impact-critical { border-left-color: var(--status-critical); }
+.fc-event.impact-warning { border-left-color: var(--status-warning); }
+.fc-event.impact-event .fc-event-title {
+    color: var(--bs-body-color) !important;
+    font-weight: 600;
     display: flex;
     align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
-.status-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
+.fc-event.impact-event .bi {
+    font-size: 0.9em;
+    margin-right: 5px;
 }
-.status-dot.status-critical { background-color: var(--status-critical); }
-.status-dot.status-warning { background-color: var(--status-warning); }
 
-/* Light Mode Event Colors */
-.fc-event.impact-event { background-color: #e9ecef; border: 1px solid #dee2e6; color: #212529 !important; }
-.fc-event.vacation-event { background-color: #e6f3ff !important; border-color: #90c2e7 !important; color: #004085 !important; }
-.fc-event.holiday-event { background-color: #e2f5e9 !important; border-color: #88c999 !important; color: #155724 !important; }
+/* Leave Event Styling */
+.fc-event.vacation-event, .fc-event.holiday-event {
+    font-weight: 500;
+}
+[data-bs-theme="dark"] .fc-event.vacation-event { background-color: #004085; color: #e6f3ff; border: 1px solid #004085;}
+[data-bs-theme="dark"] .fc-event.holiday-event { background-color: #155724; color: #e9f5e9; border: 1px solid #155724;}
 
-/* Dark Mode Event Colors */
-[data-bs-theme="dark"] .fc-event.impact-event { background-color: #495057; border: 1px solid #6c757d; color: #f8f9fa !important; }
-[data-bs-theme="dark"] .fc-event.vacation-event { background-color: #004085 !important; border-color: #90c2e7 !important; color: #e6f3ff !important; }
-[data-bs-theme="dark"] .fc-event.holiday-event { background-color: #155724 !important; border-color: #88c999 !important; color: #e9f5e9 !important; }
-
-/* 5. LIST VIEW & TOOLTIP */
-.fc .fc-list-day-cushion { background-color: var(--bs-tertiary-bg); }
+/* 5. LIST VIEW STYLES */
+.fc .fc-list-day-cushion { background-color: rgba(128,128,128,0.1); }
 .fc-list-event { background-color: var(--card-bg); border: 1px solid var(--bs-border-color); }
-.tooltip-inner { max-width: 400px; text-align: left; }
-hr.tooltip-hr { margin: 0.4rem 0; border-top: 1px solid rgba(255,255,255,0.25); }
+.fc-list-event .fc-event-title-main.impact-critical { color: var(--status-critical); }
+.fc-list-event .fc-event-title-main.impact-warning { color: var(--status-warning); }
 
-/* 6. LOADING SPINNER */
+/* 6. LOADING SPINNER & TOOLTIPS */
 .spinner-overlay {
     position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-    background-color: rgba(255, 255, 255, 0.7);
-    z-index: 100; display: flex; justify-content: center; align-items: center;
+    background-color: rgba(255, 255, 255, 0.7); z-index: 100;
+    display: flex; justify-content: center; align-items: center;
     visibility: hidden; opacity: 0; transition: opacity 0.3s, visibility 0.3s;
 }
 [data-bs-theme="dark"] .spinner-overlay { background-color: rgba(33, 37, 41, 0.7); }
 .spinner-overlay.visible { visibility: visible; opacity: 1; }
-
-/* 7. DATA TABLES */
-.dataTables_wrapper .form-control-sm, .dataTables_wrapper .form-select-sm { font-size: 0.8rem; }
-.page-link { font-size: 0.9rem; }
+.tooltip-inner { white-space: pre-wrap; text-align: left; max-width: 400px; }
