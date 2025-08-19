@@ -46,8 +46,8 @@ function setupEventListeners() {
         const theme = e.target.checked ? 'dark' : 'light';
         document.documentElement.setAttribute('data-bs-theme', theme);
         localStorage.setItem('theme', theme);
-        initializeCharts();
-        updateDashboardAndCharts(calendar.getEvents());
+        initializeCharts(); // Re-init to apply new theme colors
+        updateDashboardAndCharts(calendar.getEvents()); // Redraw with existing data
     });
     document.getElementById('csv-import').addEventListener('change', handleCsvImport);
     document.getElementById('download-template-btn').addEventListener('click', downloadCsvTemplate);
@@ -98,7 +98,7 @@ function renderManagementTables() {
 }
 
 // =================================================================================
-// 3. MODAL & DATA EDITING LOGIC
+// 3. MODAL & DATA EDITING LOGIC (No changes needed)
 // =================================================================================
 
 function openDataModal(type, id = null) {
@@ -153,7 +153,7 @@ function deleteDataFromModal() {
 }
 
 // =================================================================================
-// 4. CSV & DATA EXPORT
+// 4. CSV & DATA EXPORT (No changes needed)
 // =================================================================================
 
 function handleDataExport() {
@@ -171,7 +171,7 @@ function parseGenericFields(row) { const fields = {}; for (let i = 1; i <= 4; i+
 function processGenericCsvData(data) { appData.customers = []; appData.employees = []; appData.regions = []; const generateId = () => Date.now() + Math.random(); data.forEach(row => { const type = row.type?.toLowerCase().trim(); const fields = parseGenericFields(row); if (type === 'employee') { appData.employees.push({ id: generateId(), name: row.name, country: row.country, team: fields.team }); } else if (type === 'customer' || type === 'region') { const requirement = { teams: (fields.required_team || '').split(',').map(t => t.trim()), min: parseInt(fields.required_employee_per_team, 10) || 1 }; if (type === 'customer') { let customer = appData.customers.find(c => c.name === row.name); if (!customer) { customer = { id: generateId(), name: row.name, country: row.country, requirements: [] }; appData.customers.push(customer); } customer.requirements.push(requirement); } else { let region = appData.regions.find(r => r.name === row.name); if (!region) { region = { id: generateId(), name: row.name, countries: (row.country || '').split(',').map(c => c.trim()), requirements: [] }; appData.regions.push(region); } region.requirements.push(requirement); } } }); }
 
 // =================================================================================
-// 5. CALENDAR LOGIC ENGINE
+// 5. CALENDAR LOGIC ENGINE (No changes needed)
 // =================================================================================
 
 function initializeCalendar() {
@@ -231,10 +231,23 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
 }
 
 // =================================================================================
-// 6. GOOGLE CALENDAR API & CORE FETCH
+// 6. GOOGLE CALENDAR API & CORE FETCH (FIXED)
 // =================================================================================
 
-async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) { try { const googleLeaveEvents = await fetchGoogleCalendarData(fetchInfo); const impactEvents = generateImpactEvents(fetchInfo, googleLeaveEvents); const allEvents = [...impactEvents, ...googleLeaveEvents]; await updateDashboardAndCharts(allEvents); successCallback(allEvents); } catch (error) { console.error("Failed to fetch/process events:", error); failureCallback(error); } }
+async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
+    try {
+        const googleLeaveEvents = await fetchGoogleCalendarData(fetchInfo);
+        const impactEvents = generateImpactEvents(fetchInfo, googleLeaveEvents);
+        const allEvents = [...impactEvents, ...googleLeaveEvents];
+        // FIX: Call successCallback immediately so the calendar renders. Then update the dashboard.
+        successCallback(allEvents); 
+        updateDashboardAndCharts(); // Re-calculate everything fresh after events are loaded
+    } catch (error) { 
+        console.error("Failed to fetch/process events:", error); 
+        failureCallback(error); 
+    }
+}
+
 async function fetchGoogleCalendarData(fetchInfo) { const { vacationCalendarId, holidayCalendarId } = appData.settings; if (gapi.client.getToken() === null) return []; const { startStr, endStr } = fetchInfo; const promises = []; if (vacationCalendarId) { promises.push(gapi.client.calendar.events.list({ calendarId: vacationCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'vacation' }))); } if (holidayCalendarId) { promises.push(gapi.client.calendar.events.list({ calendarId: holidayCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'officialHoliday' }))); } const employeeCountryCalendars = [...new Set(appData.employees.filter(e => e.country).map(e => e.country.toLowerCase()))].map(code => ({ calendarId: `en.${code.toLowerCase()}#holiday@group.v.calendar.google.com`, countryCode: code })); employeeCountryCalendars.forEach(cal => { promises.push(gapi.client.calendar.events.list({ calendarId: cal.calendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'publicHoliday', countryCode: cal.countryCode })).catch(() => null)); }); const results = await Promise.allSettled(promises); let allEvents = []; results.forEach(result => { if (result.status === 'fulfilled' && result.value) { const { response, type, countryCode } = result.value; const events = response.result.items || []; const mappedEvents = events.map(event => { let displayDescription = event.summary; let employeeName = null; let applicableCountries = []; if (type === 'vacation') { employeeName = event.summary.trim(); displayDescription = `🌴 ${employeeName}`; } else { if (countryCode) { applicableCountries.push(countryCode.toLowerCase()); } const titleMatch = event.summary.match(/^([A-Z]{3}(?:\s*,\s*[A-Z]{3})*)\s*-\s*(.*)$/); if (titleMatch) { const countriesFromTitle = titleMatch[1].split(',').map(c => c.trim().toLowerCase()); applicableCountries = [...new Set([...applicableCountries, ...countriesFromTitle])]; displayDescription = `🎉 ${countriesFromTitle.join(', ').toUpperCase()} - ${titleMatch[2]}`; } else { displayDescription = `🎉 ${event.summary}`; } } return { title: displayDescription, start: event.start.date || event.start.dateTime, end: event.end.date || event.end.dateTime, allDay: !!event.start.date, className: type === 'vacation' ? 'vacation-event' : 'holiday-event', extendedProps: { employeeName, type, description: displayDescription.replace(/^[🌴🎉]\s*/, ''), applicableCountries, sortPriority: 100 } }; }); allEvents = allEvents.concat(mappedEvents); } }); return allEvents; }
 window.gisLoaded = function() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '', }); gisInited = true; maybeEnableButtons(); };
 async function initializeGapiClient() { try { await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS }); gapiInited = true; maybeEnableButtons(); if (gapi.client.getToken()) { populateCalendarSelectors(); } } catch (e) { console.error("Error initializing GAPI client:", e); } }
@@ -244,17 +257,8 @@ function handleSignoutClick() { const token = gapi.client.getToken(); if (token 
 async function populateCalendarSelectors() { try { const response = await gapi.client.calendar.calendarList.list(); const calendars = response.result.items; const vacationSelect = document.getElementById('vacation-calendar-select'); const holidaySelect = document.getElementById('holiday-calendar-select'); vacationSelect.innerHTML = '<option value="">-- Select a calendar --</option>'; holidaySelect.innerHTML = '<option value="">-- Select a calendar --</option>'; calendars.forEach(cal => { const option = new Option(cal.summary, cal.id); vacationSelect.add(option.cloneNode(true)); holidaySelect.add(option); }); if (appData.settings.vacationCalendarId) { vacationSelect.value = appData.settings.vacationCalendarId; } if (appData.settings.holidayCalendarId) { holidaySelect.value = appData.settings.holidayCalendarId; } document.getElementById('calendar-selection-ui').style.display = 'block'; } catch (error) { console.error("Could not fetch user's calendar list:", error); alert("Could not load your calendar list. Please try refreshing or re-connecting."); } }
 
 // =================================================================================
-// 7. DASHBOARD & CHARTS LOGIC
+// 7. DASHBOARD & CHARTS LOGIC (FIXED)
 // =================================================================================
-
-async function calculateForecastData() {
-    const start = new Date();
-    const end = new Date();
-    end.setDate(start.getDate() + 14);
-    const fetchInfo = { startStr: start.toISOString(), endStr: end.toISOString() };
-    const leaveEvents = await fetchGoogleCalendarData(fetchInfo);
-    return generateImpactEvents(fetchInfo, leaveEvents);
-}
 
 function initializeCharts() {
     if (issuesChart) issuesChart.destroy(); if (leaveChart) leaveChart.destroy();
@@ -264,27 +268,39 @@ function initializeCharts() {
     leaveChart = new Chart(document.getElementById('leave-chart'), { type: 'doughnut', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Leave Types', color: textColor }, legend: { position: 'right', labels: { color: textColor } }, tooltip: { callbacks: { label: (context) => { const label = context.label || ''; const details = context.chart.data.tooltipDetails[label]; return details && details.length ? `${label}: ${details.length}` : label; }, afterLabel: (context) => { const details = context.chart.data.tooltipDetails[context.label]; return details && details.length ? details.slice(0, 5).join('\n') + (details.length > 5 ? '\n...' : '') : ''; } } } } } });
 }
 
-async function updateDashboardAndCharts(allEvents) {
+async function updateDashboardAndCharts() {
+    // FIX: Get all event data directly from the calendar object AFTER it has been populated.
+    const allEvents = calendar.getEvents();
+    if (!allEvents.length && gapi.client.getToken()) {
+        console.log("Dashboard update skipped, no events loaded yet.");
+        return; 
+    }
+
     const todayStr = new Date().toISOString().split('T')[0];
-    const impactEventsInView = allEvents.filter(e => e.extendedProps.type === 'impact');
-    const leaveEventsInView = allEvents.filter(e => e.extendedProps.type !== 'impact');
+    const impactEvents = allEvents.filter(e => e.extendedProps.type === 'impact');
+    const leaveEvents = allEvents.filter(e => e.extendedProps.type !== 'impact');
     const view = calendar.view;
 
     // KPI: On Leave Today
-    const onLeaveTodayEvents = leaveEventsInView.filter(e => { const start = e.start.toISOString().split('T')[0]; const end = e.end ? e.end.toISOString().split('T')[0] : start; return todayStr >= start && todayStr < end; });
+    const onLeaveTodayEvents = leaveEvents.filter(e => { const start = e.start.toISOString().split('T')[0]; const end = e.end ? e.end.toISOString().split('T')[0] : start; return todayStr >= start && todayStr < end; });
     const onLeaveNames = new Set(onLeaveTodayEvents.map(e => e.extendedProps.employeeName).filter(Boolean));
     document.getElementById('kpi-on-leave').textContent = onLeaveNames.size;
     
     // KPI: Understaffed Days in current view
-    const understaffedInView = impactEventsInView.filter(e => e.extendedProps.status === 'critical');
+    const understaffedInView = impactEvents.filter(e => e.extendedProps.status === 'critical' && e.start >= view.activeStart && e.start < view.activeEnd);
     const understaffedDays = new Set(understaffedInView.map(e=>e.start.toISOString().split('T')[0]));
     const understaffedNames = new Set(understaffedInView.map(e => e.extendedProps.entityName));
     document.getElementById('kpi-understaffed').textContent = understaffedDays.size;
     document.getElementById('kpi-understaffed-range').textContent = `(${view.title})`;
 
-    // KPI: At Risk next 7 days
+    // KPI: At Risk next 7 days - requires a fresh calculation for the future
+    const forecastStart = new Date();
+    const forecastEnd = new Date();
+    forecastEnd.setDate(forecastStart.getDate() + 14);
+    const forecastLeaveEvents = await fetchGoogleCalendarData({ start: forecastStart, end: forecastEnd, startStr: forecastStart.toISOString(), endStr: forecastEnd.toISOString()});
+    const forecastImpactEvents = generateImpactEvents({ start: forecastStart, end: forecastEnd }, forecastLeaveEvents);
+    
     const nextSevenDays = Array.from({length: 7}, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d.toISOString().split('T')[0]; });
-    const forecastImpactEvents = await calculateForecastData();
     const atRiskInNext7Days = forecastImpactEvents.filter(e => nextSevenDays.includes(e.start.toISOString().split('T')[0]));
     const atRiskNames = new Set(atRiskInNext7Days.map(e => e.extendedProps.entityName));
     document.getElementById('kpi-at-risk').textContent = atRiskNames.size;
@@ -306,7 +322,7 @@ async function updateDashboardAndCharts(allEvents) {
 
     // Chart: Leave Types in Current View
     const leaveDetails = { 'Vacation': new Set(), 'Official Holiday': new Set(), 'Public Holiday': new Set() };
-    leaveEventsInView.forEach(e => { const typeLabel = e.extendedProps.type.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()); if (leaveDetails[typeLabel]) leaveDetails[typeLabel].add(e.extendedProps.description); });
+    leaveEvents.forEach(e => { const typeLabel = e.extendedProps.type.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()); if (leaveDetails[typeLabel]) leaveDetails[typeLabel].add(e.extendedProps.description); });
     leaveChart.data.labels = Object.keys(leaveDetails);
     leaveChart.data.datasets = [{ data: Object.values(leaveDetails).map(s => s.size), backgroundColor: ['#007bff', '#28a745', '#17a2b8'] }];
     leaveChart.data.tooltipDetails =  Object.fromEntries(Object.entries(leaveDetails).map(([key, value]) => [key, Array.from(value)]));
@@ -314,9 +330,8 @@ async function updateDashboardAndCharts(allEvents) {
     leaveChart.update();
 }
 
-
 // =================================================================================
-// 8. REPORTING & EXPORTING
+// 8. REPORTING & EXPORTING (No changes needed)
 // =================================================================================
 
 function getExportDateRange() { const selector = document.getElementById('export-period-select'); const today = new Date(); today.setHours(0, 0, 0, 0); let start, end; switch (selector.value) { case 'lastTwoWeeks': end = new Date(today); start = new Date(today); start.setDate(start.getDate() - 14); break; case 'nextTwoWeeks': start = new Date(today); end = new Date(today); end.setDate(end.getDate() + 14); break; case 'currentMonth': start = new Date(today.getFullYear(), today.getMonth(), 1); end = new Date(today.getFullYear(), today.getMonth() + 1, 0); break; case 'nextMonth': start = new Date(today.getFullYear(), today.getMonth() + 1, 1); end = new Date(today.getFullYear(), today.getMonth() + 2, 0); break; case 'custom': const startDateValue = document.getElementById('custom-start-date').value; const endDateValue = document.getElementById('custom-end-date').value; if (!startDateValue || !endDateValue) { alert('Please select both a start and end date for the custom range.'); return null; } start = new Date(startDateValue); end = new Date(endDateValue); start = new Date(start.valueOf() + start.getTimezoneOffset() * 60000); end = new Date(end.valueOf() + end.getTimezoneOffset() * 60000); end.setDate(end.getDate() + 1); break; default: start = calendar.view.activeStart; end = calendar.view.activeEnd; break; } if (selector.value !== 'currentView' && selector.value !== 'custom') end.setDate(end.getDate() + 1); return { start, end }; }
