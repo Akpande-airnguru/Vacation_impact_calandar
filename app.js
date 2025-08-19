@@ -160,6 +160,11 @@ function initializeCalendar() {
     calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
+
+        // By default, list views hide days that have no events. 
+        // Setting this to false forces all days in the range to be displayed.
+        omitZeroEvents: false, 
+
         dayMaxEvents: function(arg) { return 4; },
         eventOrder: 'extendedProps.sortPriority desc,extendedProps.titleText',
         eventContent: function(arg) {
