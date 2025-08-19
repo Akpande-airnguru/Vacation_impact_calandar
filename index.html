@@ -33,7 +33,7 @@
             <div class="col-lg-7">
                 <div class="row">
                     <div class="col-md-4 mb-3">
-                        <div id="kpi-at-risk-card" class="card kpi-card text-white bg-warning" data-bs-toggle="tooltip" data-bs-placement="bottom" title="No at-risk customers found.">
+                        <div class="card kpi-card text-white bg-warning" id="kpi-at-risk-card" data-bs-toggle="tooltip" data-bs-html="true" title="No customers at risk.">
                             <div class="card-body">
                                 <h6 class="card-title"><i class="bi bi-shield-exclamation me-2"></i>At Risk (Next 7 Days)</h6>
                                 <p class="card-text fs-2 fw-bold" id="kpi-at-risk">0</p>
@@ -41,15 +41,15 @@
                         </div>
                     </div>
                     <div class="col-md-4 mb-3">
-                        <div id="kpi-understaffed-card" class="card kpi-card text-white bg-danger" data-bs-toggle="tooltip" data-bs-placement="bottom" title="No understaffed days found.">
+                        <div class="card kpi-card text-white bg-danger" id="kpi-understaffed-card" data-bs-toggle="tooltip" data-bs-html="true" title="No understaffed days.">
                             <div class="card-body">
-                                <h6 class="card-title" id="kpi-understaffed-title"><i class="bi bi-calendar-x me-2"></i>Understaffed Days</h6>
+                                <h6 class="card-title"><i class="bi bi-calendar-x me-2"></i>Understaffed (in View)</h6>
                                 <p class="card-text fs-2 fw-bold" id="kpi-understaffed">0</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-4 mb-3">
-                        <div id="kpi-on-leave-card" class="card kpi-card text-white bg-info" data-bs-toggle="tooltip" data-bs-placement="bottom" title="No one is on leave today.">
+                        <div class="card kpi-card text-white bg-info" id="kpi-on-leave-card" data-bs-toggle="tooltip" data-bs-html="true" title="No one on leave today.">
                             <div class="card-body">
                                 <h6 class="card-title"><i class="bi bi-person-walking me-2"></i>On Leave (Today)</h6>
                                 <p class="card-text fs-2 fw-bold" id="kpi-on-leave">0</p>
@@ -75,13 +75,16 @@
             </div>
         </div>
 
-        <!-- Data Management & Integrations Row -->
+        <!-- Controls Row -->
         <div class="row mb-4">
-            <!-- Left Column: Data Management -->
-            <div class="col-lg-7 mb-4">
+            <!-- Data Management -->
+            <div class="col-lg-6 mb-4">
                 <div class="card h-100">
                     <div class="card-body">
-                        <h5 class="card-title">Data Management</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                             <h5 class="card-title mb-0">Data Management</h5>
+                             <button class="btn btn-sm btn-outline-success" id="export-data-btn"><i class="bi bi-download me-1"></i> Export Data</button>
+                        </div>
                         <ul class="nav nav-tabs" id="dataTabs" role="tablist">
                             <li class="nav-item" role="presentation"><button class="nav-link active" id="customers-tab" data-bs-toggle="tab" data-bs-target="#customers-panel" type="button" role="tab">Customers</button></li>
                             <li class="nav-item" role="presentation"><button class="nav-link" id="regions-tab" data-bs-toggle="tab" data-bs-target="#regions-panel" type="button" role="tab">Regions</button></li>
@@ -104,28 +107,22 @@
                     </div>
                 </div>
             </div>
-            <!-- Right Column: Integrations -->
-            <div class="col-lg-5 mb-4">
+            <!-- Integrations -->
+            <div class="col-lg-6 mb-4">
                 <div class="card h-100">
                      <div class="card-body">
                         <h5 class="card-title">Integrations</h5>
-                        <!-- Bulk Import / Export -->
                         <div class="mb-3 p-3 border rounded">
-                            <h6>Data Backup & Restore</h6>
-                            <p class="small text-muted mb-2">Upload a CSV to overwrite all data, or export the current data as a backup.</p>
-                            <input type="file" id="csv-import" class="form-control mb-2" accept=".csv" title="Import from CSV">
-                            <div class="d-flex justify-content-between">
-                                <a href="#" id="download-template-btn" class="small">Download Template</a>
-                                <a href="#" id="export-data-btn" class="small fw-bold"><i class="bi bi-download me-1"></i>Export Current Data</a>
-                            </div>
+                            <h6>Bulk Import from CSV</h6>
+                            <p class="small text-muted">Upload a CSV file to add/overwrite all data.</p>
+                            <input type="file" id="csv-import" class="form-control mb-2" accept=".csv">
+                            <a href="#" id="download-template-btn" class="small">Download CSV Template</a>
                         </div>
-                        <!-- Google Calendar -->
                         <div class="p-3 border rounded">
                             <h6>Google Calendar Sync</h6>
                             <p class="small text-muted">Connect to sync holidays and vacations.</p>
                             <button id="authorize_button" class="btn btn-primary" style="visibility: hidden;">Connect Google Calendar</button>
                             <button id="signout_button" class="btn btn-secondary" style="display: none;">Sign Out</button>
-                            <!-- Calendar Selection UI -->
                             <div id="calendar-selection-ui" class="mt-3" style="display: none;">
                                 <div class="mb-2">
                                     <label for="vacation-calendar-select" class="form-label small"><b>Vacation Calendar:</b></label>
@@ -145,7 +142,6 @@
         <!-- Main Calendar View -->
         <div class="card">
              <div class="card-header">
-                <!-- Export Controls -->
                 <div class="p-3 border rounded bg-body-tertiary">
                     <h5 class="mb-3">Report Exporter</h5>
                     <div class="row align-items-end gy-3">
@@ -199,7 +195,6 @@
                 </div>
             </div>
             <div class="card-body position-relative">
-                 <!-- Loading Spinner Overlay -->
                 <div id="calendar-loader" class="spinner-overlay">
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Loading...</span>
@@ -210,8 +205,8 @@
         </div>
     </div>
 
-    <!-- Add/Edit Modal -->
-    <div class="modal fade" id="data-modal" tabindex="-1" aria-labelledby="dataModalLabel" aria-hidden="true">
+    <!-- Data Modal -->
+    <div class="modal fade" id="data-modal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
@@ -220,8 +215,7 @@
                 </div>
                 <div class="modal-body">
                     <form id="data-form">
-                        <input type="hidden" id="edit-id">
-                        <input type="hidden" id="edit-type">
+                        <input type="hidden" id="edit-id"><input type="hidden" id="edit-type">
                         <div id="form-fields"></div>
                     </form>
                 </div>
