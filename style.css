@@ -127,7 +127,7 @@ body {
 
 /* *** FIX: Tooltip z-index issue *** */
 .tooltip {
-    z-index: 1080 !important; /* Higher than FullCalendar's popover (101) and Bootstrap modals (1055) */
+    z-index: 1100 !important; /* Higher than FullCalendar's popover (101) and Bootstrap modals (1055) */
 }
 .tooltip-inner { 
     white-space: pre-wrap; 
