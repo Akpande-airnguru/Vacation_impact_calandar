@@ -5,21 +5,25 @@
     --bs-body-bg: #f8f9fa;
     --bs-body-color: #212529;
     --bs-border-color: #dee2e6;
+    --bs-tertiary-bg: #e9ecef;
     --card-bg: #ffffff;
     --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
     --kpi-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     --heatmap-warning-bg: rgba(255, 183, 3, 0.15);
     --heatmap-critical-bg: rgba(217, 4, 41, 0.1);
+    --status-critical: #d90429;
+    --status-warning: #ffb703;
 }
 
 [data-bs-theme="dark"] {
     --bs-body-bg: #212529;
     --bs-body-color: #dee2e6;
     --bs-border-color: #495057;
-    --card-bg: #343a40;
+    --bs-tertiary-bg: #343a40;
+    --card-bg: #2b3035;
     --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
     --kpi-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    --heatmap-warning-bg: rgba(255, 183, 3, 0.25);
+    --heatmap-warning-bg: rgba(255, 183, 3, 0.2);
     --heatmap-critical-bg: rgba(217, 4, 41, 0.2);
 }
 
@@ -35,10 +39,12 @@ body {
     box-shadow: var(--card-shadow);
     background-color: var(--card-bg);
 }
-
-.card-header {
-    background-color: var(--card-bg);
+.card-header, .modal-header, .modal-footer {
+    background-color: var(--bs-body-bg);
     border-bottom: 1px solid var(--bs-border-color);
+}
+.bg-body-tertiary {
+    background-color: var(--bs-tertiary-bg) !important;
 }
 
 /* 2. DASHBOARD & KPI STYLES */
@@ -47,142 +53,75 @@ body {
     box-shadow: var(--kpi-shadow);
     transition: transform 0.2s ease-in-out;
 }
-.kpi-card:hover {
-    transform: translateY(-5px);
-}
-.kpi-card .card-body {
-    padding: 1rem;
-}
-
-#issues-chart, #leave-chart {
-    max-height: 120px;
-}
+.kpi-card:hover { transform: translateY(-5px); }
+.kpi-card .card-body { padding: 1rem; }
+#issues-chart, #leave-chart { max-height: 120px; }
 
 /* 3. CALENDAR GLOBAL STYLES */
 #calendar {
     --fc-border-color: var(--bs-border-color);
     --fc-today-bg-color: rgba(255, 224, 130, 0.15);
-    --status-critical: #d90429;
-    --status-warning: #ffb703;
-    --status-covered: #2a9d8f;
-    --leave-bg-color: #e9ecef;
-    --leave-text-color: #495057;
-    --vacation-bg-color: #e6f3ff;
-    --vacation-text-color: #004085;
-    --holiday-bg-color: #e9f5e9;
-    --holiday-text-color: #155724;
 }
-
 [data-bs-theme="dark"] #calendar {
     --fc-today-bg-color: rgba(255, 224, 130, 0.1);
-    --leave-bg-color: #495057;
-    --leave-text-color: #f8f9fa;
-    --vacation-bg-color: #004085;
-    --vacation-text-color: #e6f3ff;
-    --holiday-bg-color: #155724;
-    --holiday-text-color: #e9f5e9;
 }
+.fc .fc-button-primary { background-color: #0d6efd; border-color: #0d6efd; }
+.fc .fc-daygrid-day.fc-day-today { background-color: var(--fc-today-bg-color); }
+.fc .fc-daygrid-day.day-bg-warning { background-color: var(--heatmap-warning-bg); }
+.fc .fc-daygrid-day.day-bg-critical { background-color: var(--heatmap-critical-bg); }
 
-.fc .fc-button-primary {
-    background-color: #0d6efd;
-    border-color: #0d6efd;
-}
-
-.fc .fc-daygrid-day.fc-day-today {
-    background-color: var(--fc-today-bg-color);
-}
-
-/* NEW: Heatmap background styles */
-.fc .fc-daygrid-day.day-bg-warning {
-    background-color: var(--heatmap-warning-bg);
-}
-.fc .fc-daygrid-day.day-bg-critical {
-    background-color: var(--heatmap-critical-bg);
-}
-
-/* 4. MONTH VIEW EVENT STYLES */
+/* 4. REFINED EVENT STYLES (WITH STATUS DOT) */
 .fc-daygrid-event {
     border-radius: 4px;
-    margin-bottom: 3px;
-    padding: 2px 6px;
-    font-size: 0.8em;
+    padding: 3px 6px;
+    font-size: 0.85em;
     font-weight: 500;
     overflow: hidden;
+    cursor: pointer;
+}
+.event-content-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     white-space: nowrap;
+    overflow: hidden;
     text-overflow: ellipsis;
 }
-.fc-event.impact-event {
-    background-color: #f8f9fa;
-    border: 1px solid #e0e0e0;
-    border-left-width: 4px;
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
 }
-[data-bs-theme="dark"] .fc-event.impact-event {
-    background-color: #495057;
-    border-color: #6c757d;
-}
-.fc-daygrid-event.impact-event .fc-event-title {
-    color: #212529 !important;
-    font-weight: 600;
-}
-[data-bs-theme="dark"] .fc-daygrid-event.impact-event .fc-event-title {
-    color: #f8f9fa !important;
-}
-.fc-event.impact-critical { border-left-color: var(--status-critical); }
-.fc-event.impact-warning { border-left-color: var(--status-warning); }
-.fc-event.vacation-event {
-    background-color: var(--vacation-bg-color) !important;
-    color: var(--vacation-text-color) !important;
-    border: 1px solid var(--vacation-bg-color) !important;
-}
-.fc-event.holiday-event {
-    background-color: var(--holiday-bg-color) !important;
-    color: var(--holiday-text-color) !important;
-    border: 1px solid var(--holiday-bg-color) !important;
-}
-.fc-daygrid-event .fc-event-title::before {
-    margin-right: 4px;
-    font-size: 1em;
-    opacity: 1;
-}
-.fc-daygrid-event.vacation-event .fc-event-title::before { content: '🌴'; }
-.fc-daygrid-event.holiday-event .fc-event-title::before { content: '🎉'; }
+.status-dot.status-critical { background-color: var(--status-critical); }
+.status-dot.status-warning { background-color: var(--status-warning); }
 
-/* 5. LIST VIEW STYLES */
-.fc .fc-list-day-cushion {
-    background-color: rgba(128,128,128,0.1);
-}
-.fc-list-event {
-    background-color: var(--card-bg);
-    border: 1px solid var(--bs-border-color);
-}
-.fc-list-event .fc-event-title-main.impact-critical { color: var(--status-critical); }
-.fc-list-event .fc-event-title-main.impact-warning { color: var(--status-warning); }
+/* Light Mode Event Colors */
+.fc-event.impact-event { background-color: #e9ecef; border: 1px solid #dee2e6; color: #212529 !important; }
+.fc-event.vacation-event { background-color: #e6f3ff !important; border-color: #90c2e7 !important; color: #004085 !important; }
+.fc-event.holiday-event { background-color: #e2f5e9 !important; border-color: #88c999 !important; color: #155724 !important; }
+
+/* Dark Mode Event Colors */
+[data-bs-theme="dark"] .fc-event.impact-event { background-color: #495057; border: 1px solid #6c757d; color: #f8f9fa !important; }
+[data-bs-theme="dark"] .fc-event.vacation-event { background-color: #004085 !important; border-color: #90c2e7 !important; color: #e6f3ff !important; }
+[data-bs-theme="dark"] .fc-event.holiday-event { background-color: #155724 !important; border-color: #88c999 !important; color: #e9f5e9 !important; }
+
+/* 5. LIST VIEW & TOOLTIP */
+.fc .fc-list-day-cushion { background-color: var(--bs-tertiary-bg); }
+.fc-list-event { background-color: var(--card-bg); border: 1px solid var(--bs-border-color); }
+.tooltip-inner { max-width: 400px; text-align: left; }
+hr.tooltip-hr { margin: 0.4rem 0; border-top: 1px solid rgba(255,255,255,0.25); }
 
 /* 6. LOADING SPINNER */
 .spinner-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
     background-color: rgba(255, 255, 255, 0.7);
-    z-index: 100;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    visibility: hidden;
-    opacity: 0;
-    transition: opacity 0.3s, visibility 0.3s;
+    z-index: 100; display: flex; justify-content: center; align-items: center;
+    visibility: hidden; opacity: 0; transition: opacity 0.3s, visibility 0.3s;
 }
-[data-bs-theme="dark"] .spinner-overlay {
-    background-color: rgba(33, 37, 41, 0.7);
-}
-.spinner-overlay.visible {
-    visibility: visible;
-    opacity: 1;
-}
+[data-bs-theme="dark"] .spinner-overlay { background-color: rgba(33, 37, 41, 0.7); }
+.spinner-overlay.visible { visibility: visible; opacity: 1; }
 
 /* 7. DATA TABLES */
-.dataTables_wrapper .form-control-sm {
-    font-size: 0.8rem;
-}
+.dataTables_wrapper .form-control-sm, .dataTables_wrapper .form-select-sm { font-size: 0.8rem; }
+.page-link { font-size: 0.9rem; }
