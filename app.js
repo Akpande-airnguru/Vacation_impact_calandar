@@ -65,6 +65,9 @@ function setupEventListeners() {
         saveDataToLocalStorage();
         calendar.refetchEvents();
     });
+    // *** NEW: Event listeners for export buttons ***
+    document.getElementById('export-pdf-btn').addEventListener('click', handlePdfExport);
+    document.getElementById('export-excel-btn').addEventListener('click', handleXlsxExport);
 }
 
 function renderManagementTables() {
@@ -157,51 +160,30 @@ function initializeCalendar() {
     calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
-
-        // ADVANCED SORTING: Update dayMaxEvents to a function.
-        // This tells FullCalendar to calculate the number of slots dynamically,
-        // which is necessary when some events are pinned open with 'display: block'.
-        dayMaxEvents: function(arg) {
-            // This is a reasonable starting point. It might need tweaking
-            // depending on your average number of critical events per day.
-            // Returning 'true' would revert to automatic height.
-            return 4; 
-        },
-
-        // The eventOrder property uses the new detailed sortPriority values.
+        dayMaxEvents: function(arg) { return 4; },
         eventOrder: 'extendedProps.sortPriority desc,extendedProps.titleText',
-
         eventContent: function(arg) {
-    let htmlContent = '';
+            let htmlContent = '';
+            const viewType = arg.view.type;
+            const { type, description } = arg.event.extendedProps;
 
-    const viewType = arg.view.type;
-    const { type, description } = arg.event.extendedProps;
-
-    if (type === 'vacation' || type === 'officialHoliday' || type === 'publicHoliday') {
-        // Vacation or Holiday
-        let emoji = '';
-        if (type === 'vacation') emoji = '🌴';
-        else emoji = '🎉';
-
-        // LIST VIEW STYLING
-        if (viewType.startsWith('list')) {
-            htmlContent = `<div class="fc-event-title">${emoji} ${description || arg.event.title}</div>`;
-        } else {
-            // Month view styling already handled by CSS
-            htmlContent = `<div class="fc-event-title">${description || arg.event.title}</div>`;
-        }
-    } else {
-        // Impact events
-        if (viewType === 'dayGridMonth') {
-            const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
-            htmlContent = `<div class="fc-event-title">${mainTitleMatch ? mainTitleMatch[1] : 'Event'}</div>`;
-        } else {
-            htmlContent = arg.event.title;
-        }
-    }
-
-    return { html: htmlContent };
-},
+            if (type === 'vacation' || type === 'officialHoliday' || type === 'publicHoliday') {
+                let emoji = (type === 'vacation') ? '🌴' : '🎉';
+                if (viewType.startsWith('list')) {
+                    htmlContent = `<div class="fc-event-title">${emoji} ${description || arg.event.title}</div>`;
+                } else {
+                    htmlContent = `<div class="fc-event-title">${description || arg.event.title}</div>`;
+                }
+            } else {
+                if (viewType === 'dayGridMonth') {
+                    const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
+                    htmlContent = `<div class="fc-event-title">${mainTitleMatch ? mainTitleMatch[1] : 'Event'}</div>`;
+                } else {
+                    htmlContent = arg.event.title;
+                }
+            }
+            return { html: htmlContent };
+        },
         eventDidMount: function(info) {
             document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
             if (info.event.extendedProps.description) {
@@ -282,61 +264,34 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                 });
             });
 
-            // FIX #1: Don't create an event if the status is "covered"
-            if (worstStatus === 'covered') {
-                return; // Exit the function for this entity, no event will be created
-            }
+            if (worstStatus === 'covered') { return; }
 
-            // FIX #2: Use the correct ascending priority order
             const sortPriorityMap = {
-                critical_region: 10,
-                critical_customer: 20,
-                warning_region: 30,
-                warning_customer: 40,
-                // covered priorities are no longer needed but kept for reference
-                covered_region: 50,
-                covered_customer: 60
+                critical_region: 10, critical_customer: 20,
+                warning_region: 30, warning_customer: 40,
+                covered_region: 50, covered_customer: 60
             };
-
             const entityType = isRegion ? 'region' : 'customer';
             const sortKey = `${worstStatus}_${entityType}`;
             const sortPriority = sortPriorityMap[sortKey];
-
             const plainTitle = isRegion ? `[Region] ${entity.name}` : entity.name;
             const statusClass = `impact-event impact-${worstStatus}`;
-
-            // This was the other bug - the class inside the span was wrong. It is now correct.
             let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${plainTitle}</span>`;
-
             if (statusSummary.length > 0) {
                 titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
             }
-
             const description = impactDetails.length > 0 ? impactDetails.join('<br>') : `All teams are fully covered.`;
-
             const eventData = {
-                title: titleHtml,
-                start: currentDateStr,
-                allDay: true,
+                title: titleHtml, start: currentDateStr, allDay: true,
                 className: statusClass,
-                extendedProps: {
-                    description,
-                    sortPriority,
-                    titleText: plainTitle
-                }
+                extendedProps: { description, sortPriority, titleText: plainTitle }
             };
-            
-            if (worstStatus === 'critical') {
-                eventData.display = 'block';
-            }
-
+            if (worstStatus === 'critical') { eventData.display = 'block'; }
             impactEvents.push(eventData);
         };
-
         appData.customers.forEach(customer => checkEntity(customer, false));
         appData.regions.forEach(region => checkEntity(region, true));
     }
-
     return impactEvents;
 }
 
@@ -381,39 +336,30 @@ async function fetchGoogleCalendarData(fetchInfo) {
                 let applicableCountries = [];
                 let employeeName = null;
                 let eventClassName = 'leave-event';
-                let displayDescription = event.summary; // Default description
-
+                let displayDescription = event.summary;
                 if (type === 'vacation') {
                     employeeName = event.summary.trim();
                     cleanEventTitle = employeeName;
-                    displayDescription = employeeName; // For vacations, the description is just the name
+                    displayDescription = employeeName;
                     eventClassName = 'vacation-event';
-                } else { // Holiday
+                } else {
                     if (countryCode) { applicableCountries.push(countryCode.toLowerCase()); }
                     const titleMatch = event.summary.match(/^([A-Z]{3}(?:\s*,\s*[A-Z]{3})*)\s*-\s*(.*)$/);
                     if (titleMatch) { 
                         cleanEventTitle = titleMatch[2]; 
                         const countriesFromTitle = titleMatch[1].split(',').map(c => c.trim().toLowerCase()); 
                         applicableCountries = [...new Set([...applicableCountries, ...countriesFromTitle])]; 
-                        // COUNTRY DISPLAY FIX: Rebuild the description with country codes
                         displayDescription = `${countriesFromTitle.join(', ').toUpperCase()} - ${cleanEventTitle}`;
                     }
                     eventClassName = 'holiday-event';
                 }
-                
                 return {
-                    title: event.summary, // Keep original title for internal use
+                    title: event.summary,
                     start: event.start.date || event.start.dateTime,
                     end: event.end.date || event.end.dateTime,
                     allDay: !!event.start.date,
                     className: eventClassName,
-                    extendedProps: {
-                        employeeName,
-                        type,
-                        description: displayDescription, // Use the rebuilt description for display
-                        applicableCountries,
-                        sortPriority: 100 
-                    }
+                    extendedProps: { employeeName, type, description: displayDescription, applicableCountries, sortPriority: 100 }
                 };
             });
             allEvents = allEvents.concat(mappedEvents);
@@ -430,3 +376,197 @@ function maybeEnableButtons() { if (gapiInited && gisInited) { document.getEleme
 function handleAuthClick() { tokenClient.callback = async (resp) => { if (resp.error) throw (resp); document.getElementById('signout_button').style.display = 'block'; document.getElementById('authorize_button').innerText = 'Refresh Connection'; await populateCalendarSelectors(); calendar.refetchEvents(); }; if (gapi.client.getToken() === null) { tokenClient.requestAccessToken({ prompt: 'consent' }); } else { tokenClient.requestAccessToken({ prompt: '' }); } }
 function handleSignoutClick() { const token = gapi.client.getToken(); if (token !== null) { google.accounts.oauth2.revoke(token.access_token); gapi.client.setToken(''); document.getElementById('signout_button').style.display = 'none'; document.getElementById('authorize_button').innerText = 'Connect Google Calendar'; document.getElementById('calendar-selection-ui').style.display = 'none'; appData.settings.vacationCalendarId = null; appData.settings.holidayCalendarId = null; saveDataToLocalStorage(); calendar.refetchEvents(); } }
 async function populateCalendarSelectors() { try { const response = await gapi.client.calendar.calendarList.list(); const calendars = response.result.items; const vacationSelect = document.getElementById('vacation-calendar-select'); const holidaySelect = document.getElementById('holiday-calendar-select'); vacationSelect.innerHTML = '<option value="">-- Select a calendar --</option>'; holidaySelect.innerHTML = '<option value="">-- Select a calendar --</option>'; calendars.forEach(cal => { const option = new Option(cal.summary, cal.id); vacationSelect.add(option.cloneNode(true)); holidaySelect.add(option); }); if (appData.settings.vacationCalendarId) { vacationSelect.value = appData.settings.vacationCalendarId; } if (appData.settings.holidayCalendarId) { holidaySelect.value = appData.settings.holidayCalendarId; } document.getElementById('calendar-selection-ui').style.display = 'block'; } catch (error) { console.error("Could not fetch user's calendar list:", error); alert("Could not load your calendar list. Please try refreshing or re-connecting."); } }
+
+
+// =================================================================================
+// 6. REPORTING & EXPORTING
+// =================================================================================
+
+/**
+ * Generates a structured array of coverage issues (critical/warning) for a given date range.
+ * @param {Date} start - The start date of the report period.
+ * @param {Date} end - The end date of the report period.
+ * @returns {Promise<Array>} A promise that resolves to an array of issue objects.
+ */
+async function generateReportData(start, end) {
+    const reportEntries = [];
+    const fetchInfo = { 
+        startStr: start.toISOString(), 
+        endStr: end.toISOString() 
+    };
+
+    const leaveEvents = await fetchGoogleCalendarData(fetchInfo);
+
+    for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
+        const currentDateStr = day.toISOString().split('T')[0];
+
+        const checkEntityForReport = (entity, isRegion = false) => {
+            entity.requirements.forEach(req => {
+                req.teams.forEach(teamName => {
+                    const staffPool = isRegion
+                        ? appData.employees.filter(e => e.team === teamName && entity.countries.includes(e.country))
+                        : appData.employees.filter(e => e.team === teamName);
+                    
+                    let onLeaveCount = 0;
+                    const onLeaveNames = new Set();
+                    staffPool.forEach(emp => {
+                        let isEmployeeOnLeave = false;
+                        const onHoliday = leaveEvents.find(leave => (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) && currentDateStr >= leave.start && currentDateStr < (leave.end || new Date(new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        const onVacation = leaveEvents.find(leave => {
+                            if (leave.extendedProps.type !== 'vacation') return false;
+                            const vacationTitle = leave.extendedProps.employeeName;
+                            if (!vacationTitle || !emp.name) return false;
+                            return vacationTitle.toLowerCase().includes(emp.name.toLowerCase());
+                        });
+                        
+                        if (onVacation && currentDateStr >= onVacation.start && currentDateStr < (onVacation.end || new Date(new Date(onVacation.start).setDate(new Date(onVacation.start).getDate() + 1)).toISOString().split('T')[0])) {
+                            isEmployeeOnLeave = true;
+                            onLeaveNames.add(`${emp.name} (Vacation)`);
+                        } else if (onHoliday) {
+                            isEmployeeOnLeave = true;
+                            onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`);
+                        }
+                        if (isEmployeeOnLeave) onLeaveCount++;
+                    });
+
+                    const availableCount = staffPool.length - onLeaveCount;
+                    let teamStatus = 'covered';
+                    if (availableCount < req.min) teamStatus = 'critical';
+                    else if (availableCount === req.min) teamStatus = 'warning';
+
+                    if (teamStatus !== 'covered') {
+                        reportEntries.push({
+                            date: currentDateStr,
+                            entityName: entity.name,
+                            entityType: isRegion ? 'Region' : 'Customer',
+                            status: teamStatus.charAt(0).toUpperCase() + teamStatus.slice(1),
+                            details: `Team ${teamName}: ${availableCount} available of ${staffPool.length} (Min Req: ${req.min})`,
+                            personnelOnLeave: [...onLeaveNames].join(', ') || 'N/A'
+                        });
+                    }
+                });
+            });
+        };
+        appData.customers.forEach(customer => checkEntityForReport(customer, false));
+        appData.regions.forEach(region => checkEntityForReport(region, true));
+    }
+
+    reportEntries.sort((a, b) => {
+        if (a.date < b.date) return -1;
+        if (a.date > b.date) return 1;
+        if (a.status === 'Critical' && b.status !== 'Critical') return -1;
+        if (a.status !== 'Critical' && b.status === 'Critical') return 1;
+        return a.entityName.localeCompare(b.entityName);
+    });
+
+    return reportEntries;
+}
+
+/**
+ * Handles the PDF export process.
+ */
+async function handlePdfExport() {
+    const btn = document.getElementById('export-pdf-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
+
+    try {
+        const view = calendar.view;
+        const reportData = await generateReportData(view.activeStart, view.activeEnd);
+
+        if (reportData.length === 0) {
+            alert("No understaffed or at-risk customers found in the current view.");
+            return;
+        }
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'landscape' });
+
+        doc.text("Customer Coverage Impact Report", 14, 16);
+        doc.setFontSize(10);
+        doc.text(`Period: ${view.activeStart.toLocaleDateString()} to ${new Date(view.activeEnd.valueOf() - 1000).toLocaleDateString()}`, 14, 22);
+
+        const tableColumn = ["Date", "Entity Name", "Type", "Status", "Details", "Personnel on Leave"];
+        const tableRows = reportData.map(item => Object.values(item));
+
+        doc.autoTable({
+            head: [tableColumn],
+            body: tableRows,
+            startY: 30,
+            theme: 'grid',
+            headStyles: { fillColor: [22, 160, 133] },
+            didDrawCell: (data) => {
+                if (data.column.dataKey === 3 && data.cell.section === 'body') { // Status column
+                    const status = data.cell.text[0];
+                    if (status === 'Critical') {
+                        doc.setTextColor(192, 57, 43); // Red
+                        doc.setFont(undefined, 'bold');
+                    } else if (status === 'Warning') {
+                        doc.setTextColor(211, 84, 0); // Orange
+                    }
+                }
+            },
+            willDrawCell: (data) => {
+                doc.setTextColor(44, 62, 80); // Reset to default text color
+                doc.setFont(undefined, 'normal');
+            }
+        });
+
+        const dateStr = new Date().toISOString().split('T')[0];
+        doc.save(`coverage_report_${dateStr}.pdf`);
+
+    } catch (error) {
+        console.error("Error generating PDF report:", error);
+        alert("An error occurred while generating the PDF report.");
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="bi bi-file-earmark-pdf-fill me-1"></i>Export PDF`;
+    }
+}
+
+/**
+ * Handles the Excel (XLSX) export process.
+ */
+async function handleXlsxExport() {
+    const btn = document.getElementById('export-excel-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
+
+    try {
+        const view = calendar.view;
+        const reportData = await generateReportData(view.activeStart, view.activeEnd);
+
+        if (reportData.length === 0) {
+            alert("No understaffed or at-risk customers found in the current view.");
+            return;
+        }
+
+        const worksheet = XLSX.utils.json_to_sheet(reportData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Coverage Report");
+
+        // Set column headers
+        XLSX.utils.sheet_add_aoa(worksheet, [["Date", "Entity Name", "Type", "Status", "Details", "Personnel on Leave"]], { origin: "A1" });
+
+        // Calculate column widths
+        const columnWidths = [
+            { wch: 12 }, // Date
+            { wch: 25 }, // Entity Name
+            { wch: 10 }, // Type
+            { wch: 12 }, // Status
+            { wch: 50 }, // Details
+            { wch: 60 }  // Personnel on Leave
+        ];
+        worksheet['!cols'] = columnWidths;
+
+        const dateStr = new Date().toISOString().split('T')[0];
+        XLSX.writeFile(workbook, `coverage_report_${dateStr}.xlsx`, { compression: true });
+
+    } catch (error) {
+        console.error("Error generating Excel report:", error);
+        alert("An error occurred while generating the Excel report.");
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="bi bi-file-earmark-excel-fill me-1"></i>Export Excel`;
+    }
+}
