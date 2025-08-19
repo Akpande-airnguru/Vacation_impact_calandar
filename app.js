@@ -68,7 +68,7 @@ function setupEventListeners() {
     document.getElementById('export-pdf-btn').addEventListener('click', handlePdfExport);
     document.getElementById('export-excel-btn').addEventListener('click', handleXlsxExport);
 
-    // *** NEW: Event listener for the export period selector ***
+    // Event listener for the export period selector
     document.getElementById('export-period-select').addEventListener('change', (e) => {
         const customRangeDiv = document.getElementById('custom-date-range');
         if (e.target.value === 'custom') {
@@ -171,7 +171,7 @@ function initializeCalendar() {
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
         views: {
             listWeek: {
-                omitZeroEvents: false 
+                omitZeroEvents: false
             }
         },
         dayMaxEvents: function(arg) { return 4; },
@@ -396,11 +396,6 @@ async function populateCalendarSelectors() { try { const response = await gapi.c
 // 6. REPORTING & EXPORTING
 // =================================================================================
 
-/**
- * *** NEW HELPER FUNCTION ***
- * Determines the start and end dates for the report based on the selector.
- * @returns {{start: Date, end: Date}|null} An object with start and end dates, or null if invalid.
- */
 function getExportDateRange() {
     const selector = document.getElementById('export-period-select');
     const today = new Date();
@@ -436,7 +431,6 @@ function getExportDateRange() {
             }
             start = new Date(startDateValue);
             end = new Date(endDateValue);
-            // Adjust for timezone offset and include the full end day
             start = new Date(start.valueOf() + start.getTimezoneOffset() * 60000);
             end = new Date(end.valueOf() + end.getTimezoneOffset() * 60000);
             end.setDate(end.getDate() + 1); 
@@ -447,8 +441,6 @@ function getExportDateRange() {
             end = calendar.view.activeEnd;
             break;
     }
-    // For all-day events, the end date should be exclusive. We add 1 day to the end date for calculations.
-    // Except for 'currentView' where it's already correct.
     if (selector.value !== 'currentView' && selector.value !== 'custom') {
         end.setDate(end.getDate() + 1);
     }
@@ -539,55 +531,47 @@ async function handlePdfExport() {
     btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
 
     try {
-        // *** UPDATED: Use the new date range function ***
         const dateRange = getExportDateRange();
-        if (!dateRange) {
-            btn.disabled = false;
-            btn.innerHTML = `<i class="bi bi-file-earmark-pdf-fill me-1"></i>Export PDF`;
-            return;
-        }
+        if (!dateRange) return;
 
         const reportData = await generateReportData(dateRange.start, dateRange.end);
 
-        if (reportData.length === 0) {
-            alert("No understaffed or at-risk customers found in the selected period.");
+        // Filter report data based on selected status
+        const statusFilter = document.querySelector('input[name="statusFilter"]:checked').value;
+        let filteredReportData = reportData;
+        if (statusFilter === 'critical') {
+            filteredReportData = reportData.filter(item => item.status === 'Critical');
+        } else if (statusFilter === 'warning') {
+            filteredReportData = reportData.filter(item => item.status === 'Warning');
+        }
+
+        if (filteredReportData.length === 0) {
+            const statusText = statusFilter === 'both' ? '' : `'${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}' `;
+            alert(`No ${statusText}issues found in the selected period.`);
             return;
         }
 
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'landscape' });
-
         doc.text("Customer Coverage Impact Report", 14, 16);
         doc.setFontSize(10);
-        
-        // *** UPDATED: Display the correct date range in the report ***
-        const reportEndDate = new Date(dateRange.end.valueOf() - 24*60*60*1000); // Subtract one day for display
+        const reportEndDate = new Date(dateRange.end.valueOf() - 24*60*60*1000);
         doc.text(`Period: ${dateRange.start.toLocaleDateString()} to ${reportEndDate.toLocaleDateString()}`, 14, 22);
 
         const tableColumn = ["Date", "Entity Name", "Type", "Status", "Details", "Personnel on Leave"];
-        const tableRows = reportData.map(item => Object.values(item));
+        const tableRows = filteredReportData.map(item => Object.values(item));
 
         doc.autoTable({
-            head: [tableColumn],
-            body: tableRows,
-            startY: 30,
-            theme: 'grid',
+            head: [tableColumn], body: tableRows, startY: 30, theme: 'grid',
             headStyles: { fillColor: [22, 160, 133] },
             didDrawCell: (data) => {
-                if (data.column.dataKey === 3 && data.cell.section === 'body') { // Status column
+                if (data.column.dataKey === 3 && data.cell.section === 'body') {
                     const status = data.cell.text[0];
-                    if (status === 'Critical') {
-                        doc.setTextColor(192, 57, 43); // Red
-                        doc.setFont(undefined, 'bold');
-                    } else if (status === 'Warning') {
-                        doc.setTextColor(211, 84, 0); // Orange
-                    }
+                    if (status === 'Critical') { doc.setTextColor(192, 57, 43); doc.setFont(undefined, 'bold'); } 
+                    else if (status === 'Warning') { doc.setTextColor(211, 84, 0); }
                 }
             },
-            willDrawCell: (data) => {
-                doc.setTextColor(44, 62, 80); // Reset to default text color
-                doc.setFont(undefined, 'normal');
-            }
+            willDrawCell: () => { doc.setTextColor(44, 62, 80); doc.setFont(undefined, 'normal'); }
         });
 
         const dateStr = new Date().toISOString().split('T')[0];
@@ -611,30 +595,32 @@ async function handleXlsxExport() {
     btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
 
     try {
-        // *** UPDATED: Use the new date range function ***
         const dateRange = getExportDateRange();
-        if (!dateRange) {
-            btn.disabled = false;
-            btn.innerHTML = `<i class="bi bi-file-earmark-excel-fill me-1"></i>Export Excel`;
-            return;
-        }
+        if (!dateRange) return;
         
         const reportData = await generateReportData(dateRange.start, dateRange.end);
 
-        if (reportData.length === 0) {
-            alert("No understaffed or at-risk customers found in the selected period.");
+        // Filter report data based on selected status
+        const statusFilter = document.querySelector('input[name="statusFilter"]:checked').value;
+        let filteredReportData = reportData;
+        if (statusFilter === 'critical') {
+            filteredReportData = reportData.filter(item => item.status === 'Critical');
+        } else if (statusFilter === 'warning') {
+            filteredReportData = reportData.filter(item => item.status === 'Warning');
+        }
+
+        if (filteredReportData.length === 0) {
+            const statusText = statusFilter === 'both' ? '' : `'${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}' `;
+            alert(`No ${statusText}issues found in the selected period.`);
             return;
         }
 
-        const worksheet = XLSX.utils.json_to_sheet(reportData);
+        const worksheet = XLSX.utils.json_to_sheet(filteredReportData);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Coverage Report");
-
         XLSX.utils.sheet_add_aoa(worksheet, [["Date", "Entity Name", "Type", "Status", "Details", "Personnel on Leave"]], { origin: "A1" });
 
-        const columnWidths = [
-            { wch: 12 }, { wch: 25 }, { wch: 10 }, { wch: 12 }, { wch: 50 }, { wch: 60 }
-        ];
+        const columnWidths = [ { wch: 12 }, { wch: 25 }, { wch: 10 }, { wch: 12 }, { wch: 50 }, { wch: 60 } ];
         worksheet['!cols'] = columnWidths;
 
         const dateStr = new Date().toISOString().split('T')[0];
