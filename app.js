@@ -234,7 +234,7 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
 // 6. GOOGLE CALENDAR API & CORE FETCH
 // =================================================================================
 
-async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) { try { const googleLeaveEvents = await fetchGoogleCalendarData(fetchInfo); const impactEvents = generateImpactEvents(fetchInfo, googleLeaveEvents); const allEvents = [...impactEvents, ...googleLeaveEvents]; successCallback(allEvents); updateDashboardAndCharts(allEvents); } catch (error) { console.error("Failed to fetch/process events:", error); failureCallback(error); } }
+async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) { try { const googleLeaveEvents = await fetchGoogleCalendarData(fetchInfo); const impactEvents = generateImpactEvents(fetchInfo, googleLeaveEvents); const allEvents = [...impactEvents, ...googleLeaveEvents]; await updateDashboardAndCharts(allEvents); successCallback(allEvents); } catch (error) { console.error("Failed to fetch/process events:", error); failureCallback(error); } }
 async function fetchGoogleCalendarData(fetchInfo) { const { vacationCalendarId, holidayCalendarId } = appData.settings; if (gapi.client.getToken() === null) return []; const { startStr, endStr } = fetchInfo; const promises = []; if (vacationCalendarId) { promises.push(gapi.client.calendar.events.list({ calendarId: vacationCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'vacation' }))); } if (holidayCalendarId) { promises.push(gapi.client.calendar.events.list({ calendarId: holidayCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'officialHoliday' }))); } const employeeCountryCalendars = [...new Set(appData.employees.filter(e => e.country).map(e => e.country.toLowerCase()))].map(code => ({ calendarId: `en.${code.toLowerCase()}#holiday@group.v.calendar.google.com`, countryCode: code })); employeeCountryCalendars.forEach(cal => { promises.push(gapi.client.calendar.events.list({ calendarId: cal.calendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'publicHoliday', countryCode: cal.countryCode })).catch(() => null)); }); const results = await Promise.allSettled(promises); let allEvents = []; results.forEach(result => { if (result.status === 'fulfilled' && result.value) { const { response, type, countryCode } = result.value; const events = response.result.items || []; const mappedEvents = events.map(event => { let displayDescription = event.summary; let employeeName = null; let applicableCountries = []; if (type === 'vacation') { employeeName = event.summary.trim(); displayDescription = `🌴 ${employeeName}`; } else { if (countryCode) { applicableCountries.push(countryCode.toLowerCase()); } const titleMatch = event.summary.match(/^([A-Z]{3}(?:\s*,\s*[A-Z]{3})*)\s*-\s*(.*)$/); if (titleMatch) { const countriesFromTitle = titleMatch[1].split(',').map(c => c.trim().toLowerCase()); applicableCountries = [...new Set([...applicableCountries, ...countriesFromTitle])]; displayDescription = `🎉 ${countriesFromTitle.join(', ').toUpperCase()} - ${titleMatch[2]}`; } else { displayDescription = `🎉 ${event.summary}`; } } return { title: displayDescription, start: event.start.date || event.start.dateTime, end: event.end.date || event.end.dateTime, allDay: !!event.start.date, className: type === 'vacation' ? 'vacation-event' : 'holiday-event', extendedProps: { employeeName, type, description: displayDescription.replace(/^[🌴🎉]\s*/, ''), applicableCountries, sortPriority: 100 } }; }); allEvents = allEvents.concat(mappedEvents); } }); return allEvents; }
 window.gisLoaded = function() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '', }); gisInited = true; maybeEnableButtons(); };
 async function initializeGapiClient() { try { await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS }); gapiInited = true; maybeEnableButtons(); if (gapi.client.getToken()) { populateCalendarSelectors(); } } catch (e) { console.error("Error initializing GAPI client:", e); } }
@@ -247,6 +247,15 @@ async function populateCalendarSelectors() { try { const response = await gapi.c
 // 7. DASHBOARD & CHARTS LOGIC
 // =================================================================================
 
+async function calculateForecastData() {
+    const start = new Date();
+    const end = new Date();
+    end.setDate(start.getDate() + 14);
+    const fetchInfo = { startStr: start.toISOString(), endStr: end.toISOString() };
+    const leaveEvents = await fetchGoogleCalendarData(fetchInfo);
+    return generateImpactEvents(fetchInfo, leaveEvents);
+}
+
 function initializeCharts() {
     if (issuesChart) issuesChart.destroy(); if (leaveChart) leaveChart.destroy();
     const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
@@ -255,34 +264,56 @@ function initializeCharts() {
     leaveChart = new Chart(document.getElementById('leave-chart'), { type: 'doughnut', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Leave Types', color: textColor }, legend: { position: 'right', labels: { color: textColor } }, tooltip: { callbacks: { label: (context) => { const label = context.label || ''; const details = context.chart.data.tooltipDetails[label]; return details && details.length ? `${label}: ${details.length}` : label; }, afterLabel: (context) => { const details = context.chart.data.tooltipDetails[context.label]; return details && details.length ? details.slice(0, 5).join('\n') + (details.length > 5 ? '\n...' : '') : ''; } } } } } });
 }
 
-function updateDashboardAndCharts(allEvents) {
+async function updateDashboardAndCharts(allEvents) {
     const todayStr = new Date().toISOString().split('T')[0];
-    const impactEvents = allEvents.filter(e => e.extendedProps.type === 'impact');
-    const leaveEvents = allEvents.filter(e => e.extendedProps.type !== 'impact');
+    const impactEventsInView = allEvents.filter(e => e.extendedProps.type === 'impact');
+    const leaveEventsInView = allEvents.filter(e => e.extendedProps.type !== 'impact');
     const view = calendar.view;
-    let tooltipContent = { atRisk: new Set(), understaffed: new Set(), onLeave: new Set() };
-    const onLeaveTodayEvents = leaveEvents.filter(e => { const start = e.start.toISOString().split('T')[0]; const end = e.end ? e.end.toISOString().split('T')[0] : start; return todayStr >= start && todayStr < end; });
-    onLeaveTodayEvents.forEach(e => e.extendedProps.employeeName && tooltipContent.onLeave.add(e.extendedProps.employeeName));
-    const understaffedInView = impactEvents.filter(e => e.extendedProps.status === 'critical' && e.start >= view.activeStart && e.start < view.activeEnd);
-    understaffedInView.forEach(e => tooltipContent.understaffed.add(e.extendedProps.entityName));
-    const nextSevenDays = Array.from({length: 7}, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d.toISOString().split('T')[0]; });
-    impactEvents.filter(e => nextSevenDays.includes(e.start.toISOString().split('T')[0])).forEach(e => tooltipContent.atRisk.add(e.extendedProps.entityName));
-    document.getElementById('kpi-on-leave').textContent = tooltipContent.onLeave.size;
-    document.getElementById('kpi-understaffed').textContent = new Set(understaffedInView.map(e=>e.start.toISOString().split('T')[0])).size;
-    document.getElementById('kpi-at-risk').textContent = tooltipContent.atRisk.size;
+
+    // KPI: On Leave Today
+    const onLeaveTodayEvents = leaveEventsInView.filter(e => { const start = e.start.toISOString().split('T')[0]; const end = e.end ? e.end.toISOString().split('T')[0] : start; return todayStr >= start && todayStr < end; });
+    const onLeaveNames = new Set(onLeaveTodayEvents.map(e => e.extendedProps.employeeName).filter(Boolean));
+    document.getElementById('kpi-on-leave').textContent = onLeaveNames.size;
+    
+    // KPI: Understaffed Days in current view
+    const understaffedInView = impactEventsInView.filter(e => e.extendedProps.status === 'critical');
+    const understaffedDays = new Set(understaffedInView.map(e=>e.start.toISOString().split('T')[0]));
+    const understaffedNames = new Set(understaffedInView.map(e => e.extendedProps.entityName));
+    document.getElementById('kpi-understaffed').textContent = understaffedDays.size;
     document.getElementById('kpi-understaffed-range').textContent = `(${view.title})`;
-    ['at-risk-card', 'understaffed-card', 'on-leave-card'].forEach(id => {
-        const card = document.getElementById(id); const key = id.split('-')[1]; const contentSet = tooltipContent[key.charAt(0).toLowerCase() + key.slice(1)];
+
+    // KPI: At Risk next 7 days
+    const nextSevenDays = Array.from({length: 7}, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d.toISOString().split('T')[0]; });
+    const forecastImpactEvents = await calculateForecastData();
+    const atRiskInNext7Days = forecastImpactEvents.filter(e => nextSevenDays.includes(e.start.toISOString().split('T')[0]));
+    const atRiskNames = new Set(atRiskInNext7Days.map(e => e.extendedProps.entityName));
+    document.getElementById('kpi-at-risk').textContent = atRiskNames.size;
+    
+    // Update KPI Tooltips
+    const tooltipMap = { 'kpi-at-risk-card': { set: atRiskNames, default: 'No customers at risk.'}, 'kpi-understaffed-card': { set: understaffedNames, default: 'No understaffed customers.' }, 'kpi-on-leave-card': { set: onLeaveNames, default: 'No one is on leave.' } };
+    for (const [id, data] of Object.entries(tooltipMap)) {
+        const card = document.getElementById(id);
         const tooltip = bootstrap.Tooltip.getInstance(card) || new bootstrap.Tooltip(card);
-        tooltip.setContent({ '.tooltip-inner': contentSet.size > 0 ? Array.from(contentSet).join('\n') : `No ${key === 'on' ? 'one on leave' : key + ' issues'}.` });
-    });
+        tooltip.setContent({ '.tooltip-inner': data.set.size > 0 ? Array.from(data.set).join('\n') : data.default });
+    }
+    
+    // Chart: Daily Coverage Forecast
     const forecastCounts = {};
-    for (let i = 0; i < 14; i++) { const d = new Date(); d.setDate(d.getDate() + i); const dateStr = d.toISOString().split('T')[0]; const dateLabel = dateStr.substring(5); forecastCounts[dateLabel] = { warning: 0, critical: 0 }; impactEvents.forEach(e => { if (e.start.toISOString().split('T')[0] === dateStr) { forecastCounts[dateLabel][e.extendedProps.status]++; } }); }
-    issuesChart.data.labels = Object.keys(forecastCounts); issuesChart.data.datasets = [{ label: 'Warning', data: Object.values(forecastCounts).map(d => d.warning), backgroundColor: 'rgba(255, 183, 3, 0.7)' }, { label: 'Critical', data: Object.values(forecastCounts).map(d => d.critical), backgroundColor: 'rgba(217, 4, 41, 0.7)' }]; issuesChart.update();
+    for (let i = 0; i < 14; i++) { const d = new Date(); d.setDate(d.getDate() + i); const dateStr = d.toISOString().split('T')[0]; const dateLabel = dateStr.substring(5); forecastCounts[dateLabel] = { warning: 0, critical: 0 }; forecastImpactEvents.forEach(e => { if (e.start.toISOString().split('T')[0] === dateStr) forecastCounts[dateLabel][e.extendedProps.status]++; }); }
+    issuesChart.data.labels = Object.keys(forecastCounts);
+    issuesChart.data.datasets = [{ label: 'Warning', data: Object.values(forecastCounts).map(d => d.warning), backgroundColor: 'rgba(255, 183, 3, 0.7)' }, { label: 'Critical', data: Object.values(forecastCounts).map(d => d.critical), backgroundColor: 'rgba(217, 4, 41, 0.7)' }];
+    issuesChart.update();
+
+    // Chart: Leave Types in Current View
     const leaveDetails = { 'Vacation': new Set(), 'Official Holiday': new Set(), 'Public Holiday': new Set() };
-    leaveEvents.forEach(e => { const typeLabel = e.extendedProps.type.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()); if (leaveDetails[typeLabel]) { leaveDetails[typeLabel].add(e.extendedProps.description); } });
-    leaveChart.data.labels = Object.keys(leaveDetails); leaveChart.data.datasets = [{ data: Object.values(leaveDetails).map(s => s.size), backgroundColor: ['#007bff', '#28a745', '#17a2b8'] }]; leaveChart.data.tooltipDetails =  Object.fromEntries(Object.entries(leaveDetails).map(([key, value]) => [key, Array.from(value)])); leaveChart.options.plugins.title.text = `Leave Types (${view.title})`; leaveChart.update();
+    leaveEventsInView.forEach(e => { const typeLabel = e.extendedProps.type.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()); if (leaveDetails[typeLabel]) leaveDetails[typeLabel].add(e.extendedProps.description); });
+    leaveChart.data.labels = Object.keys(leaveDetails);
+    leaveChart.data.datasets = [{ data: Object.values(leaveDetails).map(s => s.size), backgroundColor: ['#007bff', '#28a745', '#17a2b8'] }];
+    leaveChart.data.tooltipDetails =  Object.fromEntries(Object.entries(leaveDetails).map(([key, value]) => [key, Array.from(value)]));
+    leaveChart.options.plugins.title.text = `Leave Types (${view.title})`;
+    leaveChart.update();
 }
+
 
 // =================================================================================
 // 8. REPORTING & EXPORTING
