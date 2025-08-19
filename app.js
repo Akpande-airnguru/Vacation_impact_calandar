@@ -65,9 +65,18 @@ function setupEventListeners() {
         saveDataToLocalStorage();
         calendar.refetchEvents();
     });
-    // *** NEW: Event listeners for export buttons ***
     document.getElementById('export-pdf-btn').addEventListener('click', handlePdfExport);
     document.getElementById('export-excel-btn').addEventListener('click', handleXlsxExport);
+
+    // *** NEW: Event listener for the export period selector ***
+    document.getElementById('export-period-select').addEventListener('change', (e) => {
+        const customRangeDiv = document.getElementById('custom-date-range');
+        if (e.target.value === 'custom') {
+            customRangeDiv.style.display = 'flex';
+        } else {
+            customRangeDiv.style.display = 'none';
+        }
+    });
 }
 
 function renderManagementTables() {
@@ -160,16 +169,11 @@ function initializeCalendar() {
     calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
-
-        // *** THE DEFINITIVE FIX IS HERE ***
-        // Instead of a global setting, we are now targeting the 'listWeek' view specifically.
-        // This is a more robust way to ensure the setting is applied correctly.
         views: {
             listWeek: {
-                omitZeroEvents: false // Explicitly tell this specific view to NOT hide empty days.
+                omitZeroEvents: false 
             }
         },
-
         dayMaxEvents: function(arg) { return 4; },
         eventOrder: 'extendedProps.sortPriority desc,extendedProps.titleText',
         eventContent: function(arg) {
@@ -202,9 +206,6 @@ function initializeCalendar() {
         },
         listDayFormat: { month: 'long', day: 'numeric', year: 'numeric', weekday: 'long' },
         buttonText: { listWeek: 'week', dayGridMonth: 'month' },
-        
-        // *** IMPROVEMENT ***
-        // This new message will now appear under the header of any empty day.
         noEventsContent: 'No coverage issues or leave scheduled.',
     });
     calendar.setOption('events', fetchCalendarEvents);
@@ -396,11 +397,65 @@ async function populateCalendarSelectors() { try { const response = await gapi.c
 // =================================================================================
 
 /**
- * Generates a structured array of coverage issues (critical/warning) for a given date range.
- * @param {Date} start - The start date of the report period.
- * @param {Date} end - The end date of the report period.
- * @returns {Promise<Array>} A promise that resolves to an array of issue objects.
+ * *** NEW HELPER FUNCTION ***
+ * Determines the start and end dates for the report based on the selector.
+ * @returns {{start: Date, end: Date}|null} An object with start and end dates, or null if invalid.
  */
+function getExportDateRange() {
+    const selector = document.getElementById('export-period-select');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalize to start of day
+
+    let start, end;
+
+    switch (selector.value) {
+        case 'lastTwoWeeks':
+            end = new Date(today);
+            start = new Date(today);
+            start.setDate(start.getDate() - 14);
+            break;
+        case 'nextTwoWeeks':
+            start = new Date(today);
+            end = new Date(today);
+            end.setDate(end.getDate() + 14);
+            break;
+        case 'currentMonth':
+            start = new Date(today.getFullYear(), today.getMonth(), 1);
+            end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            break;
+        case 'nextMonth':
+            start = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+            end = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+            break;
+        case 'custom':
+            const startDateValue = document.getElementById('custom-start-date').value;
+            const endDateValue = document.getElementById('custom-end-date').value;
+            if (!startDateValue || !endDateValue) {
+                alert('Please select both a start and end date for the custom range.');
+                return null;
+            }
+            start = new Date(startDateValue);
+            end = new Date(endDateValue);
+            // Adjust for timezone offset and include the full end day
+            start = new Date(start.valueOf() + start.getTimezoneOffset() * 60000);
+            end = new Date(end.valueOf() + end.getTimezoneOffset() * 60000);
+            end.setDate(end.getDate() + 1); 
+            break;
+        case 'currentView':
+        default:
+            start = calendar.view.activeStart;
+            end = calendar.view.activeEnd;
+            break;
+    }
+    // For all-day events, the end date should be exclusive. We add 1 day to the end date for calculations.
+    // Except for 'currentView' where it's already correct.
+    if (selector.value !== 'currentView' && selector.value !== 'custom') {
+        end.setDate(end.getDate() + 1);
+    }
+
+    return { start, end };
+}
+
 async function generateReportData(start, end) {
     const reportEntries = [];
     const fetchInfo = { 
@@ -484,11 +539,18 @@ async function handlePdfExport() {
     btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
 
     try {
-        const view = calendar.view;
-        const reportData = await generateReportData(view.activeStart, view.activeEnd);
+        // *** UPDATED: Use the new date range function ***
+        const dateRange = getExportDateRange();
+        if (!dateRange) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="bi bi-file-earmark-pdf-fill me-1"></i>Export PDF`;
+            return;
+        }
+
+        const reportData = await generateReportData(dateRange.start, dateRange.end);
 
         if (reportData.length === 0) {
-            alert("No understaffed or at-risk customers found in the current view.");
+            alert("No understaffed or at-risk customers found in the selected period.");
             return;
         }
 
@@ -497,7 +559,10 @@ async function handlePdfExport() {
 
         doc.text("Customer Coverage Impact Report", 14, 16);
         doc.setFontSize(10);
-        doc.text(`Period: ${view.activeStart.toLocaleDateString()} to ${new Date(view.activeEnd.valueOf() - 1000).toLocaleDateString()}`, 14, 22);
+        
+        // *** UPDATED: Display the correct date range in the report ***
+        const reportEndDate = new Date(dateRange.end.valueOf() - 24*60*60*1000); // Subtract one day for display
+        doc.text(`Period: ${dateRange.start.toLocaleDateString()} to ${reportEndDate.toLocaleDateString()}`, 14, 22);
 
         const tableColumn = ["Date", "Entity Name", "Type", "Status", "Details", "Personnel on Leave"];
         const tableRows = reportData.map(item => Object.values(item));
@@ -546,11 +611,18 @@ async function handleXlsxExport() {
     btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
 
     try {
-        const view = calendar.view;
-        const reportData = await generateReportData(view.activeStart, view.activeEnd);
+        // *** UPDATED: Use the new date range function ***
+        const dateRange = getExportDateRange();
+        if (!dateRange) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="bi bi-file-earmark-excel-fill me-1"></i>Export Excel`;
+            return;
+        }
+        
+        const reportData = await generateReportData(dateRange.start, dateRange.end);
 
         if (reportData.length === 0) {
-            alert("No understaffed or at-risk customers found in the current view.");
+            alert("No understaffed or at-risk customers found in the selected period.");
             return;
         }
 
@@ -558,17 +630,10 @@ async function handleXlsxExport() {
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Coverage Report");
 
-        // Set column headers
         XLSX.utils.sheet_add_aoa(worksheet, [["Date", "Entity Name", "Type", "Status", "Details", "Personnel on Leave"]], { origin: "A1" });
 
-        // Calculate column widths
         const columnWidths = [
-            { wch: 12 }, // Date
-            { wch: 25 }, // Entity Name
-            { wch: 10 }, // Type
-            { wch: 12 }, // Status
-            { wch: 50 }, // Details
-            { wch: 60 }  // Personnel on Leave
+            { wch: 12 }, { wch: 25 }, { wch: 10 }, { wch: 12 }, { wch: 50 }, { wch: 60 }
         ];
         worksheet['!cols'] = columnWidths;
 
