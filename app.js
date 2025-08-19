@@ -47,7 +47,7 @@ function setupEventListeners() {
         document.documentElement.setAttribute('data-bs-theme', theme);
         localStorage.setItem('theme', theme);
         initializeCharts(); // Re-init to apply new theme colors
-        updateDashboardAndCharts(calendar.getEvents()); // Redraw with existing data
+        updateDashboardAndCharts(); // Redraw with existing data
     });
     document.getElementById('csv-import').addEventListener('change', handleCsvImport);
     document.getElementById('download-template-btn').addEventListener('click', downloadCsvTemplate);
@@ -124,31 +124,21 @@ function openDataModal(type, id = null) {
     formFields.innerHTML = fieldsHtml;
     dataModal.show();
 }
-
 function saveDataFromModal() {
-    const id = document.getElementById('edit-id').value;
-    const type = document.getElementById('edit-type').value;
-    const isNew = !id;
-    let item = {};
+    const id = document.getElementById('edit-id').value; const type = document.getElementById('edit-type').value; const isNew = !id; let item = {};
     switch (type) {
         case 'employee': item = { id: isNew ? Date.now() : Number(id), name: document.getElementById('name').value, country: document.getElementById('country').value, team: document.getElementById('team').value }; if (isNew) appData.employees.push(item); else appData.employees = appData.employees.map(e => e.id == id ? item : e); break;
         case 'customer': case 'region':
-            const reqsText = document.getElementById('requirements').value;
-            const requirements = reqsText.split('\n').filter(Boolean).map(line => { const parts = line.split(','); const min = parseInt(parts.pop(), 10); return { teams: parts.map(t=>t.trim()), min }; });
+            const reqsText = document.getElementById('requirements').value; const requirements = reqsText.split('\n').filter(Boolean).map(line => { const parts = line.split(','); const min = parseInt(parts.pop(), 10); return { teams: parts.map(t=>t.trim()), min }; });
             if (type === 'customer') { item = { id: isNew ? Date.now() : Number(id), name: document.getElementById('name').value, country: document.getElementById('country').value, requirements }; if (isNew) appData.customers.push(item); else appData.customers = appData.customers.map(c => c.id == id ? item : c); }
             else { item = { id: isNew ? Date.now() : Number(id), name: document.getElementById('name').value, countries: document.getElementById('country').value.split(',').map(c => c.trim()), requirements }; if (isNew) appData.regions.push(item); else appData.regions = appData.regions.map(r => r.id == id ? item : r); }
             break;
     }
     saveDataToLocalStorage(); renderManagementTables(); calendar.refetchEvents(); dataModal.hide();
 }
-
 function deleteDataFromModal() {
-    const id = document.getElementById('edit-id').value;
-    const type = document.getElementById('edit-type').value;
-    if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
-    if (type === 'customer') appData.customers = appData.customers.filter(c => c.id != id);
-    if (type === 'region') appData.regions = appData.regions.filter(r => r.id != id);
-    if (type === 'employee') appData.employees = appData.employees.filter(e => e.id != id);
+    const id = document.getElementById('edit-id').value; const type = document.getElementById('edit-type').value; if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
+    if (type === 'customer') appData.customers = appData.customers.filter(c => c.id != id); if (type === 'region') appData.regions = appData.regions.filter(r => r.id != id); if (type === 'employee') appData.employees = appData.employees.filter(e => e.id != id);
     saveDataToLocalStorage(); renderManagementTables(); calendar.refetchEvents(); dataModal.hide();
 }
 
@@ -156,15 +146,7 @@ function deleteDataFromModal() {
 // 4. CSV & DATA EXPORT (No changes needed)
 // =================================================================================
 
-function handleDataExport() {
-    const dataToExport = [];
-    appData.customers.forEach(c => c.requirements.forEach(r => dataToExport.push({ type: 'customer', name: c.name, country: c.country, field_1_condition: 'required_team', field_1_value: r.teams.join(','), field_2_condition: 'required_employee_per_team', field_2_value: r.min })));
-    appData.regions.forEach(reg => reg.requirements.forEach(r => dataToExport.push({ type: 'region', name: reg.name, country: reg.countries.join(','), field_1_condition: 'required_team', field_1_value: r.teams.join(','), field_2_condition: 'required_employee_per_team', field_2_value: r.min })));
-    appData.employees.forEach(e => dataToExport.push({ type: 'employee', name: e.name, country: e.country, field_1_condition: 'team', field_1_value: e.team, field_2_condition: '', field_2_value: '' }));
-    const csv = Papa.unparse(dataToExport); const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a"); link.setAttribute("href", URL.createObjectURL(blob)); link.setAttribute("download", `coverage_data_backup_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
-}
+function handleDataExport() { const dataToExport = []; appData.customers.forEach(c => c.requirements.forEach(r => dataToExport.push({ type: 'customer', name: c.name, country: c.country, field_1_condition: 'required_team', field_1_value: r.teams.join(','), field_2_condition: 'required_employee_per_team', field_2_value: r.min }))); appData.regions.forEach(reg => reg.requirements.forEach(r => dataToExport.push({ type: 'region', name: reg.name, country: reg.countries.join(','), field_1_condition: 'required_team', field_1_value: r.teams.join(','), field_2_condition: 'required_employee_per_team', field_2_value: r.min }))); appData.employees.forEach(e => dataToExport.push({ type: 'employee', name: e.name, country: e.country, field_1_condition: 'team', field_1_value: e.team, field_2_condition: '', field_2_value: '' })); const csv = Papa.unparse(dataToExport); const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement("a"); link.setAttribute("href", URL.createObjectURL(blob)); link.setAttribute("download", `coverage_data_backup_${new Date().toISOString().split('T')[0]}.csv`); document.body.appendChild(link); link.click(); document.body.removeChild(link); }
 function downloadCsvTemplate(event) { event.preventDefault(); const csvContent = "type,name,country,field_1_condition,field_1_value,field_2_condition,field_2_value\ncustomer,Heron,AUH,required_team,\"product_ASIA,fenix,rudras\",required_employee_per_team,1\nemployee,Diego Córdova,CHI,team,fenix,,\nregion,ASIA,\"IND,QAR,AUH\",required_team,\"product_ASIA,fenix,rudras\",required_employee_per_team,1"; const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }); const link = document.createElement("a"); link.setAttribute("href", URL.createObjectURL(blob)); link.setAttribute("download", "final_template.csv"); document.body.appendChild(link); link.click(); document.body.removeChild(link); }
 function handleCsvImport(event) { const file = event.target.files[0]; if (file) { Papa.parse(file, { header: true, skipEmptyLines: true, encoding: "UTF-8", complete: (results) => { processGenericCsvData(results.data); saveDataToLocalStorage(); alert('Data imported successfully. The page will now refresh.'); location.reload(); }, error: (err) => alert(`CSV Parsing Error: ${err.message}`) }); } }
 function parseGenericFields(row) { const fields = {}; for (let i = 1; i <= 4; i++) { const condition = row[`field_${i}_condition`]; const value = row[`field_${i}_value`]; if (condition) { fields[condition] = value; } } return fields; }
@@ -197,38 +179,7 @@ function initializeCalendar() {
     calendar.setOption('events', fetchCalendarEvents);
     calendar.render();
 }
-
-function generateImpactEvents(fetchInfo, leaveEvents = []) {
-    const impactEvents = []; dailyStatusHeatmap = {};
-    const { start, end } = fetchInfo;
-    for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
-        const currentDateStr = day.toISOString().split('T')[0];
-        const checkEntity = (entity, isRegion = false) => {
-            let worstStatus = 'covered'; const detailedDescriptions = [];
-            entity.requirements.forEach(req => req.teams.forEach(teamName => {
-                const staffPool = isRegion ? appData.employees.filter(e => e.team === teamName && entity.countries.includes(e.country)) : appData.employees.filter(e => e.team === teamName);
-                const onLeave = staffPool.filter(emp => leaveEvents.some(leave => (leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) || leave.extendedProps.employeeName?.toLowerCase().includes(emp.name.toLowerCase())) && currentDateStr >= leave.start && currentDateStr < (leave.end || new Date(new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0])));
-                const availableCount = staffPool.length - onLeave.length;
-                let teamStatus = 'covered';
-                if (availableCount < req.min) teamStatus = 'critical';
-                else if (availableCount === req.min) teamStatus = 'warning';
-                if (teamStatus === 'critical') worstStatus = 'critical';
-                else if (teamStatus === 'warning' && worstStatus !== 'critical') worstStatus = 'warning';
-                if (teamStatus !== 'covered') { let detail = `<b>Team ${teamName}:</b> ${availableCount}/${staffPool.length} (Req: ${req.min})`; if (onLeave.length > 0) detail += `<br><small><i>- On Leave: ${onLeave.map(e => e.name).join(', ')}</i></small>`; detailedDescriptions.push(detail); }
-            }));
-            if (worstStatus === 'critical' || (worstStatus === 'warning' && dailyStatusHeatmap[currentDateStr] !== 'critical')) dailyStatusHeatmap[currentDateStr] = worstStatus;
-            if (worstStatus === 'covered') return;
-            const sortPriorityMap = { critical_region: 10, critical_customer: 20, warning_region: 30, warning_customer: 40 };
-            const entityType = isRegion ? 'region' : 'customer';
-            const plainTitle = isRegion ? `[Region] ${entity.name}` : entity.name;
-            const icon = worstStatus === 'critical' ? '<i class="bi bi-exclamation-octagon-fill text-danger"></i>' : '<i class="bi bi-exclamation-triangle-fill text-warning"></i>';
-            const titleHtml = `<div class="fc-event-title">${icon}<span class="ms-2">${plainTitle}</span></div>`;
-            impactEvents.push({ title: plainTitle, start: currentDateStr, allDay: true, className: `impact-event impact-${worstStatus}`, extendedProps: { description: `<strong>${plainTitle} (${worstStatus.toUpperCase()})</strong><hr class="my-1">${detailedDescriptions.join('<hr class="my-1">')}`, customHtml: titleHtml, sortPriority: sortPriorityMap[`${worstStatus}_${entityType}`], status: worstStatus, type: 'impact', entityName: entity.name }});
-        };
-        appData.customers.forEach(customer => checkEntity(customer, false)); appData.regions.forEach(region => checkEntity(region, true));
-    }
-    return impactEvents;
-}
+function generateImpactEvents(fetchInfo, leaveEvents = []) { const impactEvents = []; dailyStatusHeatmap = {}; const { start, end } = fetchInfo; for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) { const currentDateStr = day.toISOString().split('T')[0]; const checkEntity = (entity, isRegion = false) => { let worstStatus = 'covered'; const detailedDescriptions = []; entity.requirements.forEach(req => req.teams.forEach(teamName => { const staffPool = isRegion ? appData.employees.filter(e => e.team === teamName && entity.countries.includes(e.country)) : appData.employees.filter(e => e.team === teamName); const onLeave = staffPool.filter(emp => leaveEvents.some(leave => (leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) || leave.extendedProps.employeeName?.toLowerCase().includes(emp.name.toLowerCase())) && currentDateStr >= leave.start && currentDateStr < (leave.end || new Date(new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]))); const availableCount = staffPool.length - onLeave.length; let teamStatus = 'covered'; if (availableCount < req.min) teamStatus = 'critical'; else if (availableCount === req.min) teamStatus = 'warning'; if (teamStatus === 'critical') worstStatus = 'critical'; else if (teamStatus === 'warning' && worstStatus !== 'critical') worstStatus = 'warning'; if (teamStatus !== 'covered') { let detail = `<b>Team ${teamName}:</b> ${availableCount}/${staffPool.length} (Req: ${req.min})`; if (onLeave.length > 0) detail += `<br><small><i>- On Leave: ${onLeave.map(e => e.name).join(', ')}</i></small>`; detailedDescriptions.push(detail); } })); if (worstStatus === 'critical' || (worstStatus === 'warning' && dailyStatusHeatmap[currentDateStr] !== 'critical')) dailyStatusHeatmap[currentDateStr] = worstStatus; if (worstStatus === 'covered') return; const sortPriorityMap = { critical_region: 10, critical_customer: 20, warning_region: 30, warning_customer: 40 }; const entityType = isRegion ? 'region' : 'customer'; const plainTitle = isRegion ? `[Region] ${entity.name}` : entity.name; const icon = worstStatus === 'critical' ? '<i class="bi bi-exclamation-octagon-fill text-danger"></i>' : '<i class="bi bi-exclamation-triangle-fill text-warning"></i>'; const titleHtml = `<div class="fc-event-title">${icon}<span class="ms-2">${plainTitle}</span></div>`; impactEvents.push({ title: plainTitle, start: currentDateStr, allDay: true, className: `impact-event impact-${worstStatus}`, extendedProps: { description: `<strong>${plainTitle} (${worstStatus.toUpperCase()})</strong><hr class="my-1">${detailedDescriptions.join('<hr class="my-1">')}`, customHtml: titleHtml, sortPriority: sortPriorityMap[`${worstStatus}_${entityType}`], status: worstStatus, type: 'impact', entityName: entity.name }}); }; appData.customers.forEach(customer => checkEntity(customer, false)); appData.regions.forEach(region => checkEntity(region, true)); } return impactEvents; }
 
 // =================================================================================
 // 6. GOOGLE CALENDAR API & CORE FETCH (FIXED)
@@ -236,18 +187,25 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
 
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
     try {
-        const googleLeaveEvents = await fetchGoogleCalendarData(fetchInfo);
-        const impactEvents = generateImpactEvents(fetchInfo, googleLeaveEvents);
+        const today = new Date();
+        const forecastEnd = new Date();
+        forecastEnd.setDate(today.getDate() + 14);
+        
+        // **FIX**: Calculate one large range to fetch all data needed for view AND dashboard
+        const overallStart = new Date(Math.min(fetchInfo.start, today));
+        const overallEnd = new Date(Math.max(fetchInfo.end, forecastEnd));
+        
+        const googleLeaveEvents = await fetchGoogleCalendarData({ start: overallStart, end: overallEnd, startStr: overallStart.toISOString(), endStr: overallEnd.toISOString() });
+        const impactEvents = generateImpactEvents({ start: overallStart, end: overallEnd }, googleLeaveEvents);
+        
         const allEvents = [...impactEvents, ...googleLeaveEvents];
-        // FIX: Call successCallback immediately so the calendar renders. Then update the dashboard.
-        successCallback(allEvents); 
-        updateDashboardAndCharts(); // Re-calculate everything fresh after events are loaded
+        successCallback(allEvents);
+        updateDashboardAndCharts(allEvents);
     } catch (error) { 
         console.error("Failed to fetch/process events:", error); 
         failureCallback(error); 
     }
 }
-
 async function fetchGoogleCalendarData(fetchInfo) { const { vacationCalendarId, holidayCalendarId } = appData.settings; if (gapi.client.getToken() === null) return []; const { startStr, endStr } = fetchInfo; const promises = []; if (vacationCalendarId) { promises.push(gapi.client.calendar.events.list({ calendarId: vacationCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'vacation' }))); } if (holidayCalendarId) { promises.push(gapi.client.calendar.events.list({ calendarId: holidayCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'officialHoliday' }))); } const employeeCountryCalendars = [...new Set(appData.employees.filter(e => e.country).map(e => e.country.toLowerCase()))].map(code => ({ calendarId: `en.${code.toLowerCase()}#holiday@group.v.calendar.google.com`, countryCode: code })); employeeCountryCalendars.forEach(cal => { promises.push(gapi.client.calendar.events.list({ calendarId: cal.calendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'publicHoliday', countryCode: cal.countryCode })).catch(() => null)); }); const results = await Promise.allSettled(promises); let allEvents = []; results.forEach(result => { if (result.status === 'fulfilled' && result.value) { const { response, type, countryCode } = result.value; const events = response.result.items || []; const mappedEvents = events.map(event => { let displayDescription = event.summary; let employeeName = null; let applicableCountries = []; if (type === 'vacation') { employeeName = event.summary.trim(); displayDescription = `🌴 ${employeeName}`; } else { if (countryCode) { applicableCountries.push(countryCode.toLowerCase()); } const titleMatch = event.summary.match(/^([A-Z]{3}(?:\s*,\s*[A-Z]{3})*)\s*-\s*(.*)$/); if (titleMatch) { const countriesFromTitle = titleMatch[1].split(',').map(c => c.trim().toLowerCase()); applicableCountries = [...new Set([...applicableCountries, ...countriesFromTitle])]; displayDescription = `🎉 ${countriesFromTitle.join(', ').toUpperCase()} - ${titleMatch[2]}`; } else { displayDescription = `🎉 ${event.summary}`; } } return { title: displayDescription, start: event.start.date || event.start.dateTime, end: event.end.date || event.end.dateTime, allDay: !!event.start.date, className: type === 'vacation' ? 'vacation-event' : 'holiday-event', extendedProps: { employeeName, type, description: displayDescription.replace(/^[🌴🎉]\s*/, ''), applicableCountries, sortPriority: 100 } }; }); allEvents = allEvents.concat(mappedEvents); } }); return allEvents; }
 window.gisLoaded = function() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '', }); gisInited = true; maybeEnableButtons(); };
 async function initializeGapiClient() { try { await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS }); gapiInited = true; maybeEnableButtons(); if (gapi.client.getToken()) { populateCalendarSelectors(); } } catch (e) { console.error("Error initializing GAPI client:", e); } }
@@ -268,59 +226,42 @@ function initializeCharts() {
     leaveChart = new Chart(document.getElementById('leave-chart'), { type: 'doughnut', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Leave Types', color: textColor }, legend: { position: 'right', labels: { color: textColor } }, tooltip: { callbacks: { label: (context) => { const label = context.label || ''; const details = context.chart.data.tooltipDetails[label]; return details && details.length ? `${label}: ${details.length}` : label; }, afterLabel: (context) => { const details = context.chart.data.tooltipDetails[context.label]; return details && details.length ? details.slice(0, 5).join('\n') + (details.length > 5 ? '\n...' : '') : ''; } } } } } });
 }
 
-async function updateDashboardAndCharts() {
-    // FIX: Get all event data directly from the calendar object AFTER it has been populated.
-    const allEvents = calendar.getEvents();
-    if (!allEvents.length && gapi.client.getToken()) {
-        console.log("Dashboard update skipped, no events loaded yet.");
-        return; 
-    }
+function updateDashboardAndCharts(allEvents) {
+    if (!allEvents) return;
 
     const todayStr = new Date().toISOString().split('T')[0];
     const impactEvents = allEvents.filter(e => e.extendedProps.type === 'impact');
     const leaveEvents = allEvents.filter(e => e.extendedProps.type !== 'impact');
     const view = calendar.view;
 
-    // KPI: On Leave Today
     const onLeaveTodayEvents = leaveEvents.filter(e => { const start = e.start.toISOString().split('T')[0]; const end = e.end ? e.end.toISOString().split('T')[0] : start; return todayStr >= start && todayStr < end; });
     const onLeaveNames = new Set(onLeaveTodayEvents.map(e => e.extendedProps.employeeName).filter(Boolean));
     document.getElementById('kpi-on-leave').textContent = onLeaveNames.size;
     
-    // KPI: Understaffed Days in current view
     const understaffedInView = impactEvents.filter(e => e.extendedProps.status === 'critical' && e.start >= view.activeStart && e.start < view.activeEnd);
     const understaffedDays = new Set(understaffedInView.map(e=>e.start.toISOString().split('T')[0]));
     const understaffedNames = new Set(understaffedInView.map(e => e.extendedProps.entityName));
     document.getElementById('kpi-understaffed').textContent = understaffedDays.size;
     document.getElementById('kpi-understaffed-range').textContent = `(${view.title})`;
 
-    // KPI: At Risk next 7 days - requires a fresh calculation for the future
-    const forecastStart = new Date();
-    const forecastEnd = new Date();
-    forecastEnd.setDate(forecastStart.getDate() + 14);
-    const forecastLeaveEvents = await fetchGoogleCalendarData({ start: forecastStart, end: forecastEnd, startStr: forecastStart.toISOString(), endStr: forecastEnd.toISOString()});
-    const forecastImpactEvents = generateImpactEvents({ start: forecastStart, end: forecastEnd }, forecastLeaveEvents);
-    
     const nextSevenDays = Array.from({length: 7}, (_, i) => { const d = new Date(); d.setDate(d.getDate() + i); return d.toISOString().split('T')[0]; });
-    const atRiskInNext7Days = forecastImpactEvents.filter(e => nextSevenDays.includes(e.start.toISOString().split('T')[0]));
+    const atRiskInNext7Days = impactEvents.filter(e => nextSevenDays.includes(e.start.toISOString().split('T')[0]));
     const atRiskNames = new Set(atRiskInNext7Days.map(e => e.extendedProps.entityName));
     document.getElementById('kpi-at-risk').textContent = atRiskNames.size;
     
-    // Update KPI Tooltips
-    const tooltipMap = { 'kpi-at-risk-card': { set: atRiskNames, default: 'No customers at risk.'}, 'kpi-understaffed-card': { set: understaffedNames, default: 'No understaffed customers.' }, 'kpi-on-leave-card': { set: onLeaveNames, default: 'No one is on leave.' } };
+    const tooltipMap = { 'kpi-at-risk-card': { set: atRiskNames, default: 'No customers at risk.'}, 'kpi-understaffed-card': { set: understaffedNames, default: 'No understaffed customers.' }, 'kpi-on-leave-card': { set: onLeaveNames, default: 'No one is on leave today.' } };
     for (const [id, data] of Object.entries(tooltipMap)) {
         const card = document.getElementById(id);
         const tooltip = bootstrap.Tooltip.getInstance(card) || new bootstrap.Tooltip(card);
         tooltip.setContent({ '.tooltip-inner': data.set.size > 0 ? Array.from(data.set).join('\n') : data.default });
     }
     
-    // Chart: Daily Coverage Forecast
     const forecastCounts = {};
-    for (let i = 0; i < 14; i++) { const d = new Date(); d.setDate(d.getDate() + i); const dateStr = d.toISOString().split('T')[0]; const dateLabel = dateStr.substring(5); forecastCounts[dateLabel] = { warning: 0, critical: 0 }; forecastImpactEvents.forEach(e => { if (e.start.toISOString().split('T')[0] === dateStr) forecastCounts[dateLabel][e.extendedProps.status]++; }); }
+    for (let i = 0; i < 14; i++) { const d = new Date(); d.setDate(d.getDate() + i); const dateStr = d.toISOString().split('T')[0]; const dateLabel = dateStr.substring(5); forecastCounts[dateLabel] = { warning: 0, critical: 0 }; impactEvents.forEach(e => { if (e.start.toISOString().split('T')[0] === dateStr) forecastCounts[dateLabel][e.extendedProps.status]++; }); }
     issuesChart.data.labels = Object.keys(forecastCounts);
     issuesChart.data.datasets = [{ label: 'Warning', data: Object.values(forecastCounts).map(d => d.warning), backgroundColor: 'rgba(255, 183, 3, 0.7)' }, { label: 'Critical', data: Object.values(forecastCounts).map(d => d.critical), backgroundColor: 'rgba(217, 4, 41, 0.7)' }];
     issuesChart.update();
 
-    // Chart: Leave Types in Current View
     const leaveDetails = { 'Vacation': new Set(), 'Official Holiday': new Set(), 'Public Holiday': new Set() };
     leaveEvents.forEach(e => { const typeLabel = e.extendedProps.type.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()); if (leaveDetails[typeLabel]) leaveDetails[typeLabel].add(e.extendedProps.description); });
     leaveChart.data.labels = Object.keys(leaveDetails);
