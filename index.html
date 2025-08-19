@@ -6,6 +6,8 @@
     <title>Customer Impact Calendar</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <!-- FullCalendar CSS -->
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
     <!-- Your Custom CSS -->
@@ -74,11 +76,20 @@
                 <p class="card-text text-muted small mb-0">
                     Status Key: <span class="badge bg-danger">Understaffed</span>
                     <span class="badge bg-warning text-dark">At Risk</span>
-                    
                 </p>
             </div>
             <div class="card-body">
                 <div id='calendar'></div>
+            </div>
+            <!-- *** NEW: REPORTING FOOTER *** -->
+            <div class="card-footer bg-light d-flex justify-content-end align-items-center">
+                <span class="me-3 text-muted small">Export Report for Current View:</span>
+                <button id="export-pdf-btn" class="btn btn-sm btn-danger">
+                    <i class="bi bi-file-earmark-pdf-fill me-1"></i>Export PDF
+                </button>
+                <button id="export-excel-btn" class="btn btn-sm btn-success ms-2">
+                    <i class="bi bi-file-earmark-excel-fill me-1"></i>Export Excel
+                </button>
             </div>
         </div>
     </div>
@@ -86,6 +97,13 @@
     <!-- JavaScript Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    
+    <!-- *** NEW: Libraries for PDF and Excel Export *** -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- Google API Scripts -->
     <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
     <script src="https://apis.google.com/js/api.js"></script>
     
