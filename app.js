@@ -4,18 +4,22 @@
 // 1. APPLICATION SETUP & STATE MANAGEMENT
 // =================================================================================
 
-// Global state object to hold all application data
+// Global state object
 let appData = {
-    customers: [], // { id, name, country, minEmployees }
-    employees: [], // { id, name, team }
-    regions: [],   // { id, name, countries: [], requirements: [{ teams, min }] }
-    // Note: Leave data is not stored in appData but fetched live or imported
+    customers: [],
+    employees: [],
+    regions: [],
+    settings: { vacationCalendarId: null, holidayCalendarId: null }
 };
 
-// Global reference to the FullCalendar instance
+// Global references
 let calendar;
+let dataModal;
+let issuesChart, leaveChart;
+let customersTable, regionsTable, employeesTable;
+let dailyStatusHeatmap = {}; // For heatmap calculation
 
-// Google API Configuration - REPLACE WITH YOUR CREDENTIALS
+// Google API Configuration
 const GOOGLE_API_KEY = 'AIzaSyCXlCu4Xl4iu94TwGmtOHv_BvEUZxlwPSk';
 const GOOGLE_CLIENT_ID = '612439385835-vvddjfvh151k187liqauarg6gnl0tjds.apps.googleusercontent.com';
 const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"];
@@ -25,13 +29,16 @@ let tokenClient;
 let gapiInited = false;
 let gisInited = false;
 
-// Initialize the application when the DOM is fully loaded
+// Initialize App
 document.addEventListener('DOMContentLoaded', initializeApp);
 
 function initializeApp() {
     console.log("Initializing App...");
+    dataModal = new bootstrap.Modal(document.getElementById('data-modal'));
     loadDataFromLocalStorage();
     setupEventListeners();
+    initializeTheme();
+    initializeCharts();
     renderManagementTables();
     initializeCalendar();
     gapi.load('client', initializeGapiClient);
@@ -40,7 +47,10 @@ function initializeApp() {
 // =================================================================================
 // 2. DATA PERSISTENCE & UI
 // =================================================================================
-function saveDataToLocalStorage() { localStorage.setItem('resourcePlannerData', JSON.stringify(appData)); }
+
+function saveDataToLocalStorage() {
+    localStorage.setItem('resourcePlannerData', JSON.stringify(appData));
+}
 
 function loadDataFromLocalStorage() {
     const savedData = localStorage.getItem('resourcePlannerData');
@@ -51,6 +61,17 @@ function loadDataFromLocalStorage() {
 }
 
 function setupEventListeners() {
+    // Theme Toggle
+    document.getElementById('theme-toggle').addEventListener('change', (e) => {
+        const theme = e.target.checked ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-bs-theme', theme);
+        localStorage.setItem('theme', theme);
+        // Redraw charts for new theme
+        initializeCharts();
+        updateDashboardAndCharts(calendar.getEvents());
+    });
+
+    // CSV and Google Auth
     document.getElementById('csv-import').addEventListener('change', handleCsvImport);
     document.getElementById('download-template-btn').addEventListener('click', downloadCsvTemplate);
     document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
@@ -65,30 +86,187 @@ function setupEventListeners() {
         saveDataToLocalStorage();
         calendar.refetchEvents();
     });
+
+    // Reporting
     document.getElementById('export-pdf-btn').addEventListener('click', handlePdfExport);
     document.getElementById('export-excel-btn').addEventListener('click', handleXlsxExport);
-
-    // Event listener for the export period selector
     document.getElementById('export-period-select').addEventListener('change', (e) => {
-        const customRangeDiv = document.getElementById('custom-date-range');
-        if (e.target.value === 'custom') {
-            customRangeDiv.style.display = 'flex';
-        } else {
-            customRangeDiv.style.display = 'none';
-        }
+        document.getElementById('custom-date-range').style.display = e.target.value === 'custom' ? 'flex' : 'none';
     });
+
+    // Modal Triggers
+    document.getElementById('add-customer-btn').addEventListener('click', () => openDataModal('customer'));
+    document.getElementById('add-region-btn').addEventListener('click', () => openDataModal('region'));
+    document.getElementById('add-employee-btn').addEventListener('click', () => openDataModal('employee'));
+    document.getElementById('save-btn').addEventListener('click', saveDataFromModal);
+    document.getElementById('delete-btn').addEventListener('click', deleteDataFromModal);
+}
+
+function initializeTheme() {
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-bs-theme', savedTheme);
+    document.getElementById('theme-toggle').checked = savedTheme === 'dark';
 }
 
 function renderManagementTables() {
-    const customerList = appData.customers.map(c => `<li><strong>${c.name} (${c.country})</strong><br><small>${c.requirements.map(r => `${r.teams.join(', ')}: ${r.min} required`).join('<br>')}</small></li>`).join('');
-    const employeeList = appData.employees.map(e => `<li>${e.name} (${e.country}) - Team: ${e.team}</li>`).join('');
-    const regionList = appData.regions.map(r => `<li><strong>Region: ${r.name} (Countries: ${r.countries.join(', ')})</strong><br><small>${r.requirements.map(req => `${req.teams.join(', ')}: ${req.min} required`).join('<br>')}</small></li>`).join('');
-    document.getElementById('data-input-forms').innerHTML = `<div class="card border-0"><div class="card-body p-0"><h6>Current Customers:</h6><ul class="list-unstyled">${customerList||'<li>None loaded</li>'}</ul><h6 class="mt-3">Current Regions:</h6><ul class="list-unstyled">${regionList||'<li>None loaded</li>'}</ul><h6 class="mt-3">Current Employees:</h6><ul class="list-unstyled">${employeeList||'<li>None loaded</li>'}</ul></div></div>`;
+    // Destroy existing tables to prevent errors on re-render
+    if (customersTable) customersTable.destroy();
+    if (regionsTable) regionsTable.destroy();
+    if (employeesTable) employeesTable.destroy();
+
+    // Customers Table
+    const customersTbody = appData.customers.map(c => `
+        <tr data-id="${c.id}">
+            <td>${c.name}</td>
+            <td>${c.country}</td>
+            <td>${c.requirements.map(r => `${r.teams.join(', ')} (${r.min})`).join('<br>')}</td>
+            <td><button class="btn btn-sm btn-outline-secondary edit-btn"><i class="bi bi-pencil"></i></button></td>
+        </tr>`).join('');
+    document.getElementById('customers-table').innerHTML = `
+        <thead><tr><th>Name</th><th>Country</th><th>Requirements</th><th>Edit</th></tr></thead>
+        <tbody>${customersTbody}</tbody>`;
+
+    // Regions Table
+    const regionsTbody = appData.regions.map(r => `
+        <tr data-id="${r.id}">
+            <td>${r.name}</td>
+            <td>${r.countries.join(', ')}</td>
+            <td>${r.requirements.map(req => `${req.teams.join(', ')} (${req.min})`).join('<br>')}</td>
+            <td><button class="btn btn-sm btn-outline-secondary edit-btn"><i class="bi bi-pencil"></i></button></td>
+        </tr>`).join('');
+    document.getElementById('regions-table').innerHTML = `
+        <thead><tr><th>Name</th><th>Countries</th><th>Requirements</th><th>Edit</th></tr></thead>
+        <tbody>${regionsTbody}</tbody>`;
+
+    // Employees Table
+    const employeesTbody = appData.employees.map(e => `
+        <tr data-id="${e.id}">
+            <td>${e.name}</td>
+            <td>${e.country}</td>
+            <td>${e.team}</td>
+            <td><button class="btn btn-sm btn-outline-secondary edit-btn"><i class="bi bi-pencil"></i></button></td>
+        </tr>`).join('');
+    document.getElementById('employees-table').innerHTML = `
+        <thead><tr><th>Name</th><th>Country</th><th>Team</th><th>Edit</th></tr></thead>
+        <tbody>${employeesTbody}</tbody>`;
+
+    // Initialize DataTables
+    customersTable = new DataTable('#customers-table');
+    regionsTable = new DataTable('#regions-table');
+    employeesTable = new DataTable('#employees-table');
+
+    // Add event listeners for new edit buttons
+    document.querySelector('#customers-panel').addEventListener('click', e => { if(e.target.closest('.edit-btn')) openDataModal('customer', e.target.closest('tr').dataset.id) });
+    document.querySelector('#regions-panel').addEventListener('click', e => { if(e.target.closest('.edit-btn')) openDataModal('region', e.target.closest('tr').dataset.id) });
+    document.querySelector('#employees-panel').addEventListener('click', e => { if(e.target.closest('.edit-btn')) openDataModal('employee', e.target.closest('tr').dataset.id) });
 }
 
+// =================================================================================
+// 3. MODAL & DATA EDITING LOGIC
+// =================================================================================
+
+function openDataModal(type, id = null) {
+    const formFields = document.getElementById('form-fields');
+    document.getElementById('edit-id').value = id;
+    document.getElementById('edit-type').value = type;
+    document.getElementById('delete-btn').style.display = id ? 'block' : 'none';
+
+    let data = {};
+    let title = `Add New ${type.charAt(0).toUpperCase() + type.slice(1)}`;
+    let fieldsHtml = '';
+
+    if (id) {
+        title = `Edit ${type.charAt(0).toUpperCase() + type.slice(1)}`;
+        if (type === 'customer') data = appData.customers.find(item => item.id == id);
+        if (type === 'region') data = appData.regions.find(item => item.id == id);
+        if (type === 'employee') data = appData.employees.find(item => item.id == id);
+    }
+    
+    // Generate form fields based on type
+    switch(type) {
+        case 'employee':
+            fieldsHtml = `
+                <div class="mb-3"><label for="name" class="form-label">Name</label><input type="text" class="form-control" id="name" value="${data.name || ''}"></div>
+                <div class="mb-3"><label for="country" class="form-label">Country Code</label><input type="text" class="form-control" id="country" value="${data.country || ''}"></div>
+                <div class="mb-3"><label for="team" class="form-label">Team</label><input type="text" class="form-control" id="team" value="${data.team || ''}"></div>`;
+            break;
+        case 'customer':
+            fieldsHtml = `
+                <div class="mb-3"><label for="name" class="form-label">Name</label><input type="text" class="form-control" id="name" value="${data.name || ''}"></div>
+                <div class="mb-3"><label for="country" class="form-label">Country Code</label><input type="text" class="form-control" id="country" value="${data.country || ''}"></div>
+                <p class="small text-muted">Enter one requirement per line: teams(comma-sep),min_required (e.g., "fenix,rudras,1")</p>
+                <div class="mb-3"><label for="requirements" class="form-label">Requirements</label><textarea class="form-control" id="requirements" rows="3">${data.requirements ? data.requirements.map(r => `${r.teams.join(',')},${r.min}`).join('\n') : ''}</textarea></div>`;
+            break;
+        case 'region':
+            fieldsHtml = `
+                <div class="mb-3"><label for="name" class="form-label">Name</label><input type="text" class="form-control" id="name" value="${data.name || ''}"></div>
+                <div class="mb-3"><label for="country" class="form-label">Countries (comma-separated)</label><input type="text" class="form-control" id="country" value="${data.countries ? data.countries.join(',') : ''}"></div>
+                <p class="small text-muted">Enter one requirement per line: teams(comma-sep),min_required (e.g., "fenix,rudras,1")</p>
+                <div class="mb-3"><label for="requirements" class="form-label">Requirements</label><textarea class="form-control" id="requirements" rows="3">${data.requirements ? data.requirements.map(r => `${r.teams.join(',')},${r.min}`).join('\n') : ''}</textarea></div>`;
+            break;
+    }
+
+    document.getElementById('dataModalLabel').textContent = title;
+    formFields.innerHTML = fieldsHtml;
+    dataModal.show();
+}
+
+function saveDataFromModal() {
+    const id = document.getElementById('edit-id').value;
+    const type = document.getElementById('edit-type').value;
+    const isNew = !id;
+    let item = {};
+
+    switch (type) {
+        case 'employee':
+            item = { id: isNew ? Date.now() : Number(id), name: document.getElementById('name').value, country: document.getElementById('country').value, team: document.getElementById('team').value };
+            if (isNew) appData.employees.push(item);
+            else appData.employees = appData.employees.map(e => e.id == id ? item : e);
+            break;
+        case 'customer':
+        case 'region':
+            const reqsText = document.getElementById('requirements').value;
+            const requirements = reqsText.split('\n').filter(Boolean).map(line => {
+                const parts = line.split(',');
+                const min = parseInt(parts.pop(), 10);
+                return { teams: parts, min };
+            });
+            if (type === 'customer') {
+                item = { id: isNew ? Date.now() : Number(id), name: document.getElementById('name').value, country: document.getElementById('country').value, requirements };
+                if (isNew) appData.customers.push(item);
+                else appData.customers = appData.customers.map(c => c.id == id ? item : c);
+            } else {
+                item = { id: isNew ? Date.now() : Number(id), name: document.getElementById('name').value, countries: document.getElementById('country').value.split(',').map(c => c.trim()), requirements };
+                if (isNew) appData.regions.push(item);
+                else appData.regions = appData.regions.map(r => r.id == id ? item : r);
+            }
+            break;
+    }
+    
+    saveDataToLocalStorage();
+    renderManagementTables();
+    calendar.refetchEvents();
+    dataModal.hide();
+}
+
+function deleteDataFromModal() {
+    const id = document.getElementById('edit-id').value;
+    const type = document.getElementById('edit-type').value;
+    if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
+
+    if (type === 'customer') appData.customers = appData.customers.filter(c => c.id != id);
+    if (type === 'region') appData.regions = appData.regions.filter(r => r.id != id);
+    if (type === 'employee') appData.employees = appData.employees.filter(e => e.id != id);
+
+    saveDataToLocalStorage();
+    renderManagementTables();
+    calendar.refetchEvents();
+    dataModal.hide();
+}
 
 // =================================================================================
-// 3. CSV IMPORT & EXPORT
+// 4. CSV IMPORT & EXPORT
+// ... (CSV functions are unchanged) ...
 // =================================================================================
 
 function downloadCsvTemplate(event) {
@@ -116,7 +294,7 @@ function handleCsvImport(event) {
             complete: (results) => {
                 processGenericCsvData(results.data);
                 saveDataToLocalStorage();
-                alert('Data imported. The page will now reload to apply changes.');
+                alert('Data imported successfully. The page will now refresh.');
                 location.reload();
             },
             error: (err) => alert(`CSV Parsing Error: ${err.message}`)
@@ -145,14 +323,14 @@ function processGenericCsvData(data) {
         if (type === 'employee') {
             appData.employees.push({ id: generateId(), name: row.name, country: row.country, team: fields.team });
         } else if (type === 'customer' || type === 'region') {
-            const requirement = { teams: fields.required_team.split(',').map(t => t.trim()), min: parseInt(fields.required_employee_per_team, 10) };
+            const requirement = { teams: (fields.required_team || '').split(',').map(t => t.trim()), min: parseInt(fields.required_employee_per_team, 10) || 1 };
             if (type === 'customer') {
                 let customer = appData.customers.find(c => c.name === row.name);
                 if (!customer) { customer = { id: generateId(), name: row.name, country: row.country, requirements: [] }; appData.customers.push(customer); }
                 customer.requirements.push(requirement);
             } else { // region
                 let region = appData.regions.find(r => r.name === row.name);
-                if (!region) { region = { id: generateId(), name: row.name, countries: row.country.split(',').map(c => c.trim()), requirements: [] }; appData.regions.push(region); }
+                if (!region) { region = { id: generateId(), name: row.name, countries: (row.country || '').split(',').map(c => c.trim()), requirements: [] }; appData.regions.push(region); }
                 region.requirements.push(requirement);
             }
         }
@@ -161,7 +339,7 @@ function processGenericCsvData(data) {
 
 
 // =================================================================================
-// 4. CALENDAR LOGIC ENGINE
+// 5. CALENDAR LOGIC ENGINE
 // =================================================================================
 
 function initializeCalendar() {
@@ -169,37 +347,21 @@ function initializeCalendar() {
     calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
-        views: {
-            listWeek: {
-                omitZeroEvents: false
-            }
-        },
-        dayMaxEvents: function(arg) { return 4; },
+        views: { listWeek: { omitZeroEvents: false } },
+        dayMaxEvents: 4,
         eventOrder: 'extendedProps.sortPriority desc,extendedProps.titleText',
-        eventContent: function(arg) {
-            let htmlContent = '';
-            const viewType = arg.view.type;
-            const { type, description } = arg.event.extendedProps;
-
-            if (type === 'vacation' || type === 'officialHoliday' || type === 'publicHoliday') {
-                let emoji = (type === 'vacation') ? '🌴' : '🎉';
-                if (viewType.startsWith('list')) {
-                    htmlContent = `<div class="fc-event-title">${emoji} ${description || arg.event.title}</div>`;
-                } else {
-                    htmlContent = `<div class="fc-event-title">${description || arg.event.title}</div>`;
-                }
-            } else {
-                if (viewType === 'dayGridMonth') {
-                    const mainTitleMatch = arg.event.title.match(/<span class="fc-event-title-main.*?">(.*?)<\/span>/);
-                    htmlContent = `<div class="fc-event-title">${mainTitleMatch ? mainTitleMatch[1] : 'Event'}</div>`;
-                } else {
-                    htmlContent = arg.event.title;
-                }
-            }
-            return { html: htmlContent };
+        loading: (isLoading) => {
+            document.getElementById('calendar-loader').classList.toggle('visible', isLoading);
         },
+        dayCellDidMount: (arg) => {
+            // Heatmap logic
+            const dateStr = arg.date.toISOString().split('T')[0];
+            const status = dailyStatusHeatmap[dateStr];
+            if (status === 'critical') arg.el.classList.add('day-bg-critical');
+            else if (status === 'warning') arg.el.classList.add('day-bg-warning');
+        },
+        eventContent: (arg) => ({ html: arg.event.extendedProps.customHtml || arg.event.title }),
         eventDidMount: function(info) {
-            document.querySelectorAll('.tooltip').forEach(tooltip => tooltip.remove());
             if (info.event.extendedProps.description) {
                 new bootstrap.Tooltip(info.el, { title: info.event.extendedProps.description, placement: 'top', trigger: 'hover', container: 'body', html: true });
             }
@@ -214,14 +376,16 @@ function initializeCalendar() {
 
 function generateImpactEvents(fetchInfo, leaveEvents = []) {
     const impactEvents = [];
+    dailyStatusHeatmap = {}; // Reset heatmap data
     const { start, end } = fetchInfo;
 
     for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
         const currentDateStr = day.toISOString().split('T')[0];
 
         const checkEntity = (entity, isRegion = false) => {
+            // ... (Core logic is the same, but we add a detailed tooltip and update the heatmap)
             let worstStatus = 'covered';
-            const impactDetails = [];
+            const detailedDescriptions = [];
             const statusSummary = [];
 
             entity.requirements.forEach(req => {
@@ -229,79 +393,60 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
                     const staffPool = isRegion
                         ? appData.employees.filter(e => e.team === teamName && entity.countries.includes(e.country))
                         : appData.employees.filter(e => e.team === teamName);
-                    let onLeaveCount = 0;
-                    const onLeaveNames = new Set();
-                    staffPool.forEach(emp => {
-                        let isEmployeeOnLeave = false;
-                        const onHoliday = leaveEvents.find(leave => (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) && currentDateStr >= leave.start && currentDateStr < (leave.end || new Date(new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
-                        const onVacation = leaveEvents.find(leave => {
-                            if (leave.extendedProps.type !== 'vacation') return false;
-                            const vacationTitle = leave.extendedProps.employeeName;
-                            if (!vacationTitle || !emp.name) return false;
-                            if (vacationTitle.toLowerCase().includes(emp.name.toLowerCase())) {
-                                const matchingEmployees = appData.employees.filter(e => vacationTitle.toLowerCase().includes(e.name.toLowerCase()));
-                                if (matchingEmployees.length > 1) {
-                                    console.warn(`AMBIGUOUS VACATION: Event "${vacationTitle}" could apply to multiple employees: ${matchingEmployees.map(e => e.name).join(', ')}. Matching with ${emp.name}.`);
-                                }
-                                return true;
-                            }
-                            return false;
-                        });
-                        if (onVacation && currentDateStr >= onVacation.start && currentDateStr < (onVacation.end || new Date(new Date(onVacation.start).setDate(new Date(onVacation.start).getDate() + 1)).toISOString().split('T')[0])) {
-                            isEmployeeOnLeave = true;
-                            onLeaveNames.add(`${emp.name} (Vacation)`);
-                        } else if (onHoliday) {
-                            isEmployeeOnLeave = true;
-                            onLeaveNames.add(`${emp.name} (Holiday in ${emp.country})`);
-                        }
-                        if (isEmployeeOnLeave) onLeaveCount++;
+                    
+                    const onLeave = staffPool.filter(emp => {
+                        const onHoliday = leaveEvents.some(leave => (leave.extendedProps.type === 'officialHoliday' || leave.extendedProps.type === 'publicHoliday') && leave.extendedProps.applicableCountries.includes(emp.country?.toLowerCase()) && currentDateStr >= leave.start && currentDateStr < (leave.end || new Date(new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        const onVacation = leaveEvents.some(leave => leave.extendedProps.type === 'vacation' && (leave.extendedProps.employeeName?.toLowerCase().includes(emp.name.toLowerCase())) && currentDateStr >= leave.start && currentDateStr < (leave.end || new Date(new Date(leave.start).setDate(new Date(leave.start).getDate() + 1)).toISOString().split('T')[0]));
+                        return onHoliday || onVacation;
                     });
-                    const availableCount = staffPool.length - onLeaveCount;
+
+                    const availableCount = staffPool.length - onLeave.length;
                     let teamStatus = 'covered';
                     if (availableCount < req.min) teamStatus = 'critical';
                     else if (availableCount === req.min) teamStatus = 'warning';
+
                     if (teamStatus === 'critical') worstStatus = 'critical';
                     else if (teamStatus === 'warning' && worstStatus !== 'critical') worstStatus = 'warning';
-                    let teamDetail = `<b>Team ${teamName}:</b> ${availableCount}/${staffPool.length} (Req: ${req.min})`;
+
                     if (teamStatus !== 'covered') {
                         statusSummary.push(`${teamName}: ${availableCount}/${req.min}`);
-                        teamDetail += ` <strong class="text-${teamStatus === 'critical' ? 'danger' : 'warning'}">(${teamStatus.charAt(0).toUpperCase() + teamStatus.slice(1)})</strong>`;
-                    } else {
-                        teamDetail += ` (OK)`;
-                    }
-                    if (teamStatus !== 'covered' || onLeaveNames.size > 0) {
-                        impactDetails.push(teamDetail);
-                        if (onLeaveNames.size > 0) {
-                            impactDetails.push(`<small><i>- On Leave: ${[...onLeaveNames].join(', ')}</i></small>`);
+                        let detail = `<b>Team ${teamName}:</b> ${availableCount}/${staffPool.length} (Req: ${req.min})`;
+                        if (onLeave.length > 0) {
+                            detail += `<br><small><i>- On Leave: ${onLeave.map(e => e.name).join(', ')}</i></small>`;
                         }
+                        detailedDescriptions.push(detail);
                     }
                 });
             });
+            
+            // Update heatmap data
+            if (worstStatus === 'critical' || (worstStatus === 'warning' && dailyStatusHeatmap[currentDateStr] !== 'critical')) {
+                dailyStatusHeatmap[currentDateStr] = worstStatus;
+            }
 
             if (worstStatus === 'covered') { return; }
 
-            const sortPriorityMap = {
-                critical_region: 10, critical_customer: 20,
-                warning_region: 30, warning_customer: 40,
-                covered_region: 50, covered_customer: 60
-            };
+            const sortPriorityMap = { critical_region: 10, critical_customer: 20, warning_region: 30, warning_customer: 40 };
             const entityType = isRegion ? 'region' : 'customer';
-            const sortKey = `${worstStatus}_${entityType}`;
-            const sortPriority = sortPriorityMap[sortKey];
             const plainTitle = isRegion ? `[Region] ${entity.name}` : entity.name;
-            const statusClass = `impact-event impact-${worstStatus}`;
             let titleHtml = `<span class="fc-event-title-main impact-${worstStatus}">${plainTitle}</span>`;
             if (statusSummary.length > 0) {
                 titleHtml += `<span class="fc-event-status-details">${statusSummary.join(' | ')}</span>`;
             }
-            const description = impactDetails.length > 0 ? impactDetails.join('<br>') : `All teams are fully covered.`;
-            const eventData = {
-                title: titleHtml, start: currentDateStr, allDay: true,
-                className: statusClass,
-                extendedProps: { description, sortPriority, titleText: plainTitle }
-            };
-            if (worstStatus === 'critical') { eventData.display = 'block'; }
-            impactEvents.push(eventData);
+
+            impactEvents.push({
+                title: plainTitle, // Simple title for sorting
+                start: currentDateStr, allDay: true,
+                className: `impact-event impact-${worstStatus}`,
+                display: worstStatus === 'critical' ? 'block' : 'auto',
+                extendedProps: {
+                    description: `<strong>${plainTitle} (${worstStatus.toUpperCase()})</strong><hr class="my-1">${detailedDescriptions.join('<hr class="my-1">')}`,
+                    customHtml: titleHtml,
+                    sortPriority: sortPriorityMap[`${worstStatus}_${entityType}`],
+                    status: worstStatus,
+                    type: 'impact'
+                }
+            });
         };
         appData.customers.forEach(customer => checkEntity(customer, false));
         appData.regions.forEach(region => checkEntity(region, true));
@@ -311,13 +456,15 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) {
 
 
 // =================================================================================
-// 5. GOOGLE CALENDAR API
+// 6. GOOGLE CALENDAR API
 // =================================================================================
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
     try {
         const googleLeaveEvents = await fetchGoogleCalendarData(fetchInfo);
         const impactEvents = generateImpactEvents(fetchInfo, googleLeaveEvents);
-        successCallback([...impactEvents, ...googleLeaveEvents]);
+        const allEvents = [...impactEvents, ...googleLeaveEvents];
+        successCallback(allEvents);
+        updateDashboardAndCharts(allEvents); // Update dashboard after events are processed
     } catch (error) {
         console.error("Failed to fetch or process calendar events:", error);
         failureCallback(error);
@@ -325,6 +472,7 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
 }
 
 async function fetchGoogleCalendarData(fetchInfo) {
+    // ... (This function is unchanged) ...
     const { vacationCalendarId, holidayCalendarId } = appData.settings;
     if (gapi.client.getToken() === null) return [];
     const { startStr, endStr } = fetchInfo;
@@ -346,33 +494,30 @@ async function fetchGoogleCalendarData(fetchInfo) {
             const { response, type, countryCode } = result.value;
             const events = response.result.items || [];
             const mappedEvents = events.map(event => {
-                let cleanEventTitle = event.summary;
-                let applicableCountries = [];
-                let employeeName = null;
-                let eventClassName = 'leave-event';
                 let displayDescription = event.summary;
+                let employeeName = null;
+                let applicableCountries = [];
                 if (type === 'vacation') {
                     employeeName = event.summary.trim();
-                    cleanEventTitle = employeeName;
-                    displayDescription = employeeName;
-                    eventClassName = 'vacation-event';
-                } else {
+                    displayDescription = `🌴 ${employeeName}`;
+                } else { 
                     if (countryCode) { applicableCountries.push(countryCode.toLowerCase()); }
                     const titleMatch = event.summary.match(/^([A-Z]{3}(?:\s*,\s*[A-Z]{3})*)\s*-\s*(.*)$/);
                     if (titleMatch) { 
-                        cleanEventTitle = titleMatch[2]; 
                         const countriesFromTitle = titleMatch[1].split(',').map(c => c.trim().toLowerCase()); 
                         applicableCountries = [...new Set([...applicableCountries, ...countriesFromTitle])]; 
-                        displayDescription = `${countriesFromTitle.join(', ').toUpperCase()} - ${cleanEventTitle}`;
+                        displayDescription = `🎉 ${countriesFromTitle.join(', ').toUpperCase()} - ${titleMatch[2]}`;
+                    } else {
+                        displayDescription = `🎉 ${event.summary}`;
                     }
-                    eventClassName = 'holiday-event';
                 }
+                
                 return {
-                    title: event.summary,
+                    title: displayDescription, 
                     start: event.start.date || event.start.dateTime,
                     end: event.end.date || event.end.dateTime,
                     allDay: !!event.start.date,
-                    className: eventClassName,
+                    className: type === 'vacation' ? 'vacation-event' : 'holiday-event',
                     extendedProps: { employeeName, type, description: displayDescription, applicableCountries, sortPriority: 100 }
                 };
             });
@@ -383,7 +528,7 @@ async function fetchGoogleCalendarData(fetchInfo) {
 }
 
 
-// Google Auth functions
+// ... (Google Auth functions are unchanged)
 window.gisLoaded = function() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '', }); gisInited = true; maybeEnableButtons(); };
 async function initializeGapiClient() { try { await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS }); gapiInited = true; maybeEnableButtons(); if (gapi.client.getToken()) { populateCalendarSelectors(); } } catch (e) { console.error("Error initializing GAPI client:", e); } }
 function maybeEnableButtons() { if (gapiInited && gisInited) { document.getElementById('authorize_button').style.visibility = 'visible'; } }
@@ -393,13 +538,99 @@ async function populateCalendarSelectors() { try { const response = await gapi.c
 
 
 // =================================================================================
-// 6. REPORTING & EXPORTING
+// 7. DASHBOARD & CHARTS LOGIC
+// =================================================================================
+
+function initializeCharts() {
+    if (issuesChart) issuesChart.destroy();
+    if (leaveChart) leaveChart.destroy();
+    const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+    const textColor = isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)';
+
+    issuesChart = new Chart(document.getElementById('issues-chart'), {
+        type: 'bar',
+        data: { labels: [], datasets: [] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { title: { display: true, text: 'Daily Coverage Issues', color: textColor }, legend: { display: false } },
+            scales: { x: { stacked: true, ticks: { color: textColor } }, y: { stacked: true, beginAtZero: true, ticks: { color: textColor } } }
+        }
+    });
+    leaveChart = new Chart(document.getElementById('leave-chart'), {
+        type: 'doughnut',
+        data: { labels: [], datasets: [] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { title: { display: true, text: 'Leave Types', color: textColor }, legend: { position: 'right', labels: { color: textColor } } }
+        }
+    });
+}
+
+function updateDashboardAndCharts(allEvents) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const impactEvents = allEvents.filter(e => e.extendedProps.type === 'impact');
+    const leaveEvents = allEvents.filter(e => e.extendedProps.type !== 'impact');
+
+    // KPI: On Leave Today
+    const onLeaveToday = leaveEvents.filter(e => {
+        const start = e.start.toISOString().split('T')[0];
+        const end = e.end ? e.end.toISOString().split('T')[0] : start;
+        return todayStr >= start && todayStr < end;
+    });
+    document.getElementById('kpi-on-leave').textContent = new Set(onLeaveToday.map(e => e.extendedProps.employeeName)).size;
+    
+    // KPI: Understaffed days in current view
+    const understaffedDays = new Set(impactEvents.filter(e => e.extendedProps.status === 'critical').map(e => e.start.toISOString().split('T')[0]));
+    document.getElementById('kpi-understaffed').textContent = understaffedDays.size;
+
+    // KPI: At Risk next 7 days
+    const nextSevenDays = Array.from({length: 7}, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() + i);
+        return d.toISOString().split('T')[0];
+    });
+    const atRiskCustomers = new Set(impactEvents.filter(e => nextSevenDays.includes(e.start.toISOString().split('T')[0])).map(e => e.title));
+    document.getElementById('kpi-at-risk').textContent = atRiskCustomers.size;
+
+    // Chart: Issues Breakdown
+    const issueCounts = {};
+    impactEvents.forEach(e => {
+        const date = e.start.toISOString().split('T')[0].substring(5); // M-D format
+        if (!issueCounts[date]) issueCounts[date] = { warning: 0, critical: 0 };
+        issueCounts[date][e.extendedProps.status]++;
+    });
+    const sortedDates = Object.keys(issueCounts).sort();
+    issuesChart.data.labels = sortedDates;
+    issuesChart.data.datasets = [
+        { label: 'Warning', data: sortedDates.map(d => issueCounts[d].warning), backgroundColor: 'rgba(255, 183, 3, 0.7)' },
+        { label: 'Critical', data: sortedDates.map(d => issueCounts[d].critical), backgroundColor: 'rgba(217, 4, 41, 0.7)' }
+    ];
+    issuesChart.update();
+
+    // Chart: Leave Type Breakdown
+    const leaveTypeCounts = { vacation: 0, officialHoliday: 0, publicHoliday: 0 };
+    leaveEvents.forEach(e => {
+        if (leaveTypeCounts.hasOwnProperty(e.extendedProps.type)) {
+            leaveTypeCounts[e.extendedProps.type]++;
+        }
+    });
+    leaveChart.data.labels = ['Vacation', 'Official Holiday', 'Public Holiday'];
+    leaveChart.data.datasets = [{
+        data: Object.values(leaveTypeCounts),
+        backgroundColor: ['#007bff', '#28a745', '#17a2b8']
+    }];
+    leaveChart.update();
+}
+
+// =================================================================================
+// 8. REPORTING & EXPORTING
 // =================================================================================
 
 function getExportDateRange() {
+    // ... (This function is unchanged)
     const selector = document.getElementById('export-period-select');
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalize to start of day
+    today.setHours(0, 0, 0, 0);
 
     let start, end;
 
@@ -444,22 +675,16 @@ function getExportDateRange() {
     if (selector.value !== 'currentView' && selector.value !== 'custom') {
         end.setDate(end.getDate() + 1);
     }
-
     return { start, end };
 }
 
 async function generateReportData(start, end) {
+    // ... (This function is unchanged)
     const reportEntries = [];
-    const fetchInfo = { 
-        startStr: start.toISOString(), 
-        endStr: end.toISOString() 
-    };
-
+    const fetchInfo = { startStr: start.toISOString(), endStr: end.toISOString() };
     const leaveEvents = await fetchGoogleCalendarData(fetchInfo);
-
     for (let day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
         const currentDateStr = day.toISOString().split('T')[0];
-
         const checkEntityForReport = (entity, isRegion = false) => {
             entity.requirements.forEach(req => {
                 req.teams.forEach(teamName => {
@@ -510,7 +735,6 @@ async function generateReportData(start, end) {
         appData.customers.forEach(customer => checkEntityForReport(customer, false));
         appData.regions.forEach(region => checkEntityForReport(region, true));
     }
-
     reportEntries.sort((a, b) => {
         if (a.date < b.date) return -1;
         if (a.date > b.date) return 1;
@@ -518,14 +742,11 @@ async function generateReportData(start, end) {
         if (a.status !== 'Critical' && b.status === 'Critical') return 1;
         return a.entityName.localeCompare(b.entityName);
     });
-
     return reportEntries;
 }
 
-/**
- * Handles the PDF export process.
- */
 async function handlePdfExport() {
+    // ... (This function is unchanged, it contains the status filter logic)
     const btn = document.getElementById('export-pdf-btn');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
@@ -535,15 +756,10 @@ async function handlePdfExport() {
         if (!dateRange) return;
 
         const reportData = await generateReportData(dateRange.start, dateRange.end);
-
-        // Filter report data based on selected status
         const statusFilter = document.querySelector('input[name="statusFilter"]:checked').value;
         let filteredReportData = reportData;
-        if (statusFilter === 'critical') {
-            filteredReportData = reportData.filter(item => item.status === 'Critical');
-        } else if (statusFilter === 'warning') {
-            filteredReportData = reportData.filter(item => item.status === 'Warning');
-        }
+        if (statusFilter === 'critical') filteredReportData = reportData.filter(item => item.status === 'Critical');
+        else if (statusFilter === 'warning') filteredReportData = reportData.filter(item => item.status === 'Warning');
 
         if (filteredReportData.length === 0) {
             const statusText = statusFilter === 'both' ? '' : `'${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}' `;
@@ -586,10 +802,8 @@ async function handlePdfExport() {
     }
 }
 
-/**
- * Handles the Excel (XLSX) export process.
- */
 async function handleXlsxExport() {
+    // ... (This function is unchanged, it contains the status filter logic)
     const btn = document.getElementById('export-excel-btn');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
@@ -599,15 +813,10 @@ async function handleXlsxExport() {
         if (!dateRange) return;
         
         const reportData = await generateReportData(dateRange.start, dateRange.end);
-
-        // Filter report data based on selected status
         const statusFilter = document.querySelector('input[name="statusFilter"]:checked').value;
         let filteredReportData = reportData;
-        if (statusFilter === 'critical') {
-            filteredReportData = reportData.filter(item => item.status === 'Critical');
-        } else if (statusFilter === 'warning') {
-            filteredReportData = reportData.filter(item => item.status === 'Warning');
-        }
+        if (statusFilter === 'critical') filteredReportData = reportData.filter(item => item.status === 'Critical');
+        else if (statusFilter === 'warning') filteredReportData = reportData.filter(item => item.status === 'Warning');
 
         if (filteredReportData.length === 0) {
             const statusText = statusFilter === 'both' ? '' : `'${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}' `;
