@@ -1,35 +1,86 @@
-/* style.css - FINAL POLISHED VERSION */
+/* style.css */
 
-/* 1. GENERAL PAGE & LAYOUT STYLES */
+/* 1. THEME & LAYOUT VARIABLES */
+:root {
+    --bs-body-bg: #f8f9fa;
+    --bs-body-color: #212529;
+    --bs-border-color: #dee2e6;
+    --card-bg: #ffffff;
+    --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    --kpi-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --heatmap-warning-bg: rgba(255, 183, 3, 0.15);
+    --heatmap-critical-bg: rgba(217, 4, 41, 0.1);
+}
+
+[data-bs-theme="dark"] {
+    --bs-body-bg: #212529;
+    --bs-body-color: #dee2e6;
+    --bs-border-color: #495057;
+    --card-bg: #343a40;
+    --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    --kpi-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    --heatmap-warning-bg: rgba(255, 183, 3, 0.25);
+    --heatmap-critical-bg: rgba(217, 4, 41, 0.2);
+}
+
 body {
-    background-color: #f8f9fa;
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    color: #212529;
-}
-.card {
-    border: none;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-}
-.card-header {
-    background-color: #ffffff;
-    border-bottom: 1px solid #dee2e6;
+    transition: background-color 0.3s, color 0.3s;
 }
 
-/* 2. CALENDAR GLOBAL STYLES */
+.card {
+    border: 1px solid var(--bs-border-color);
+    box-shadow: var(--card-shadow);
+    background-color: var(--card-bg);
+}
+
+.card-header {
+    background-color: var(--card-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+/* 2. DASHBOARD & KPI STYLES */
+.kpi-card {
+    border: none;
+    box-shadow: var(--kpi-shadow);
+    transition: transform 0.2s ease-in-out;
+}
+.kpi-card:hover {
+    transform: translateY(-5px);
+}
+.kpi-card .card-body {
+    padding: 1rem;
+}
+
+#issues-chart, #leave-chart {
+    max-height: 120px;
+}
+
+/* 3. CALENDAR GLOBAL STYLES */
 #calendar {
-    --fc-border-color: #e9ecef;
+    --fc-border-color: var(--bs-border-color);
     --fc-today-bg-color: rgba(255, 224, 130, 0.15);
     --status-critical: #d90429;
     --status-warning: #ffb703;
     --status-covered: #2a9d8f;
     --leave-bg-color: #e9ecef;
     --leave-text-color: #495057;
-
-    /* ADD THESE TWO NEW VARIABLES HERE */
     --vacation-bg-color: #e6f3ff;
     --vacation-text-color: #004085;
     --holiday-bg-color: #e9f5e9;
     --holiday-text-color: #155724;
+}
+
+[data-bs-theme="dark"] #calendar {
+    --fc-today-bg-color: rgba(255, 224, 130, 0.1);
+    --leave-bg-color: #495057;
+    --leave-text-color: #f8f9fa;
+    --vacation-bg-color: #004085;
+    --vacation-text-color: #e6f3ff;
+    --holiday-bg-color: #155724;
+    --holiday-text-color: #e9f5e9;
 }
 
 .fc .fc-button-primary {
@@ -41,260 +92,97 @@ body {
     background-color: var(--fc-today-bg-color);
 }
 
-/* 3. MONTH VIEW EVENT STYLES (REFINED) */
+/* NEW: Heatmap background styles */
+.fc .fc-daygrid-day.day-bg-warning {
+    background-color: var(--heatmap-warning-bg);
+}
+.fc .fc-daygrid-day.day-bg-critical {
+    background-color: var(--heatmap-critical-bg);
+}
 
-/* General container for events in daygrid */
+/* 4. MONTH VIEW EVENT STYLES */
 .fc-daygrid-event {
     border-radius: 4px;
     margin-bottom: 3px;
-    padding: 2px 6px; /* Increased padding slightly */
-    font-size: 0.8em;  /* Slightly larger font */
+    padding: 2px 6px;
+    font-size: 0.8em;
     font-weight: 500;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
-
-/* --- Customer Status Event Styling --- */
 .fc-event.impact-event {
     background-color: #f8f9fa;
-    border: 1px solid #e0e0e0; /* A slightly darker border for definition */
+    border: 1px solid #e0e0e0;
     border-left-width: 4px;
 }
-/* === THE CRITICAL FIX FOR TEXT VISIBILITY === */
-.fc-daygrid-event.impact-event .fc-event-title {
-    color: #212529 !important; /* Force dark text color */
-    font-weight: 600;           /* Make it bolder */
+[data-bs-theme="dark"] .fc-event.impact-event {
+    background-color: #495057;
+    border-color: #6c757d;
 }
-/* === END OF CRITICAL FIX === */
-
+.fc-daygrid-event.impact-event .fc-event-title {
+    color: #212529 !important;
+    font-weight: 600;
+}
+[data-bs-theme="dark"] .fc-daygrid-event.impact-event .fc-event-title {
+    color: #f8f9fa !important;
+}
 .fc-event.impact-critical { border-left-color: var(--status-critical); }
 .fc-event.impact-warning { border-left-color: var(--status-warning); }
-.fc-event.impact-covered { border-left-color: var(--status-covered); }
-
-/* --- Holiday/Vacation Event Styling --- */
-.fc-event.leave-event {
-    background-color: var(--leave-bg-color);
-    color: var(--leave-text-color);
-    border: 1px solid var(--leave-bg-color);
-}
-.fc-event.leave-event .fc-event-title::before {
-    content: '•';
-    margin-right: 4px;
-    opacity: 0.8;
-}
-
 .fc-event.vacation-event {
-    background-color: #e1effa; /* slightly darker than #e6f3ff */
-    color: #002b52; /* deeper navy for better contrast */
-    border: 1px solid #90c2e7;
-    font-weight: 600;
-    font-size: 0.8em;
-    padding: 3px 6px;
-    border-radius: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    background-color: var(--vacation-bg-color) !important;
+    color: var(--vacation-text-color) !important;
+    border: 1px solid var(--vacation-bg-color) !important;
 }
-
-.fc-event.vacation-event .fc-event-title::before {
-    content: '🌴';
-    margin-right: 4px;
-    font-size: 0.9em;
-    opacity: 0.85;
-}
-
 .fc-event.holiday-event {
-    background-color: var(--holiday-bg-color);
-    color: var(--holiday-text-color);
-    border-color: var(--holiday-bg-color);
+    background-color: var(--holiday-bg-color) !important;
+    color: var(--holiday-text-color) !important;
+    border: 1px solid var(--holiday-bg-color) !important;
 }
-
-
-.fc-daygrid-event.vacation-event {
-    background-color: #cce4f7 !important;  /* darker blue background */
-    color: #001b33 !important;             /* very dark navy text */
-    border: 1px solid #80bde3 !important;
-    font-weight: 700;                      /* bolder for clarity */
-    font-size: 0.82em;
-    padding: 4px 6px;
-    border-radius: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
-}
-
-.fc-daygrid-event.vacation-event .fc-event-title::before {
-    content: '🌴';
+.fc-daygrid-event .fc-event-title::before {
     margin-right: 4px;
     font-size: 1em;
     opacity: 1;
 }
+.fc-daygrid-event.vacation-event .fc-event-title::before { content: '🌴'; }
+.fc-daygrid-event.holiday-event .fc-event-title::before { content: '🎉'; }
 
-.fc-daygrid-event.vacation-event:hover {
-    background-color: #b4d9f2 !important;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
-}
-
-/* 4. "+n more" POPOVER STYLES */
-.fc-popover {
-    border: none;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-    border-radius: 8px;
-}
-.fc-popover-header {
-    background-color: #f8f9fa;
-    font-size: 0.9em;
-    font-weight: 600;
-}
-.fc-popover-body {
-    padding: 8px;
-}
-
-/* 5. LIST VIEW STYLES (Polished) */
+/* 5. LIST VIEW STYLES */
 .fc .fc-list-day-cushion {
-    background-color: #f8f9fa;
-    padding: 10px 16px;
-}
-.fc-list-day-text, .fc-list-day-side-text {
-    font-size: 0.9em;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #6c757d;
-}
-.fc-list-event-dot, .fc-list-event-time {
-    display: none !important;
+    background-color: rgba(128,128,128,0.1);
 }
 .fc-list-event {
-    background-color: #ffffff;
-    margin: 8px 0;
-    padding: 12px 16px;
-    border-radius: 6px;
-    border: 1px solid #e9ecef;
-    transition: box-shadow 0.2s ease-in-out;
+    background-color: var(--card-bg);
+    border: 1px solid var(--bs-border-color);
 }
-.fc-list-event:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-.fc-list-event-title a {
-    color: inherit;
-    text-decoration: none;
-}
-.fc-event-title-main {
-    font-size: 1em;
-    font-weight: 600;
-}
-.fc-event-status-details {
-    font-size: 0.8em;
-    font-weight: 500;
-    color: #6c757d;
-    margin-left: 12px;
-    padding-left: 12px;
-    border-left: 1px solid #dee2e6;
-}
-
-/* Color the title text based on status (ONLY for List View) */
 .fc-list-event .fc-event-title-main.impact-critical { color: var(--status-critical); }
 .fc-list-event .fc-event-title-main.impact-warning { color: var(--status-warning); }
-.fc-list-event .fc-event-title-main.impact-covered { color: var(--status-covered); }
 
-/* 6. TOOLTIP STYLE */
-.tooltip-inner {
-    max-width: 350px;
-    padding: 12px;
-    background-color: #212529;
-    text-align: left;
-    border-radius: 6px;
-    font-size: 0.9em;
+/* 6. LOADING SPINNER */
+.spinner-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.7);
+    z-index: 100;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 0.3s, visibility 0.3s;
 }
-
-.fc-daygrid-event.vacation-event {
-    background-color: #bfdff8 !important;  /* dark enough for clear contrast */
-    border: 1px solid #5ca6d7 !important;
-    font-weight: 700;
-    font-size: 0.82em;
-    padding: 4px 6px;
-    border-radius: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+[data-bs-theme="dark"] .spinner-overlay {
+    background-color: rgba(33, 37, 41, 0.7);
 }
-
-/* 👇👇 THIS IS THE CRITICAL LINE FOR TEXT CONTRAST 👇👇 */
-.fc-daygrid-event.vacation-event .fc-event-title {
-    color: #00111f !important; /* deep blackish-blue */
-    font-weight: 800;
-    opacity: 1 !important; /* prevent inherited fading */
-}
-
-.fc-daygrid-event.holiday-event {
-    background-color: #cdeedc !important;       /* soft green background */
-    color: #064d28 !important;                  /* deep forest green text */
-    border: 1px solid #79c190 !important;       /* complementary border */
-    font-weight: 700;
-    font-size: 0.82em;
-    padding: 4px 6px;
-    border-radius: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.06);
-}
-
-.fc-daygrid-event.holiday-event .fc-event-title::before {
-    content: '🎉';
-    margin-right: 4px;
-    font-size: 1em;
+.spinner-overlay.visible {
+    visibility: visible;
     opacity: 1;
 }
 
-.fc-daygrid-event.holiday-event:hover {
-    background-color: #b7e8cc !important;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
-}
-
-/* =======================
-   8. FORCE STACKING ORDER
-   ======================= */
-.fc-daygrid-event.impact-event {            /* base for all capacity bars */
-    position: relative;                     /* activate z‑index */
-}
-.fc-daygrid-event.impact-critical  { z-index: 60 !important; }  /* red    – very top */
-.fc-daygrid-event.impact-warning   { z-index: 50 !important; }  /* yellow */
-.fc-daygrid-event.impact-covered   { z-index: 40 !important; }  /* green  – bottom */
-.fc-daygrid-event.vacation-event,
-.fc-daygrid-event.holiday-event    { z-index: 10 !important; }  /* leave  – lowest */
-
-/* Vacation styling in list view (matches month view) */
-.fc-list-event.vacation-event {
-    background-color: #bfdff8 !important;
-    color: #00111f !important;
-    border: 1px solid #5ca6d7 !important;
-    font-weight: 700;
-    font-size: 0.82em;
-    padding: 4px 6px;
-    border-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-/* Holiday styling in list view (matches month view) */
-.fc-list-event.holiday-event {
-    background-color: #cdeedc !important;
-    color: #064d28 !important;
-    border: 1px solid #79c190 !important;
-    font-weight: 700;
-    font-size: 0.82em;
-    padding: 4px 6px;
-    border-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-.fc-daygrid-event.holiday-event .fc-event-title {
-    color: var(--holiday-text-color) !important;
-    font-weight: 800;
-    opacity: 1 !important;
+/* 7. DATA TABLES */
+.dataTables_wrapper .form-control-sm {
+    font-size: 0.8rem;
 }
