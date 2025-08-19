@@ -27,13 +27,13 @@
             </div>
         </header>
 
-        <!-- NEW: Dashboard Row -->
+        <!-- Dashboard Row -->
         <div class="row mb-4">
             <!-- KPI Cards -->
             <div class="col-lg-7">
                 <div class="row">
                     <div class="col-md-4 mb-3">
-                        <div class="card kpi-card text-white bg-warning">
+                        <div id="kpi-at-risk-card" class="card kpi-card text-white bg-warning" data-bs-toggle="tooltip" data-bs-placement="bottom" title="No at-risk customers found.">
                             <div class="card-body">
                                 <h6 class="card-title"><i class="bi bi-shield-exclamation me-2"></i>At Risk (Next 7 Days)</h6>
                                 <p class="card-text fs-2 fw-bold" id="kpi-at-risk">0</p>
@@ -41,15 +41,15 @@
                         </div>
                     </div>
                     <div class="col-md-4 mb-3">
-                        <div class="card kpi-card text-white bg-danger">
+                        <div id="kpi-understaffed-card" class="card kpi-card text-white bg-danger" data-bs-toggle="tooltip" data-bs-placement="bottom" title="No understaffed days found.">
                             <div class="card-body">
-                                <h6 class="card-title"><i class="bi bi-calendar-x me-2"></i>Understaffed Days</h6>
+                                <h6 class="card-title" id="kpi-understaffed-title"><i class="bi bi-calendar-x me-2"></i>Understaffed Days</h6>
                                 <p class="card-text fs-2 fw-bold" id="kpi-understaffed">0</p>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-4 mb-3">
-                        <div class="card kpi-card text-white bg-info">
+                        <div id="kpi-on-leave-card" class="card kpi-card text-white bg-info" data-bs-toggle="tooltip" data-bs-placement="bottom" title="No one is on leave today.">
                             <div class="card-body">
                                 <h6 class="card-title"><i class="bi bi-person-walking me-2"></i>On Leave (Today)</h6>
                                 <p class="card-text fs-2 fw-bold" id="kpi-on-leave">0</p>
@@ -75,10 +75,10 @@
             </div>
         </div>
 
-        <!-- Top Row for Controls -->
+        <!-- Data Management & Integrations Row -->
         <div class="row mb-4">
             <!-- Left Column: Data Management -->
-            <div class="col-lg-6 mb-4">
+            <div class="col-lg-7 mb-4">
                 <div class="card h-100">
                     <div class="card-body">
                         <h5 class="card-title">Data Management</h5>
@@ -105,16 +105,19 @@
                 </div>
             </div>
             <!-- Right Column: Integrations -->
-            <div class="col-lg-6 mb-4">
+            <div class="col-lg-5 mb-4">
                 <div class="card h-100">
                      <div class="card-body">
                         <h5 class="card-title">Integrations</h5>
-                        <!-- Bulk Import -->
+                        <!-- Bulk Import / Export -->
                         <div class="mb-3 p-3 border rounded">
-                            <h6>Bulk Import from CSV</h6>
-                            <p class="small text-muted">Upload a CSV file to add/overwrite all data.</p>
-                            <input type="file" id="csv-import" class="form-control mb-2" accept=".csv">
-                            <a href="#" id="download-template-btn" class="small">Download CSV Template</a>
+                            <h6>Data Backup & Restore</h6>
+                            <p class="small text-muted mb-2">Upload a CSV to overwrite all data, or export the current data as a backup.</p>
+                            <input type="file" id="csv-import" class="form-control mb-2" accept=".csv" title="Import from CSV">
+                            <div class="d-flex justify-content-between">
+                                <a href="#" id="download-template-btn" class="small">Download Template</a>
+                                <a href="#" id="export-data-btn" class="small fw-bold"><i class="bi bi-download me-1"></i>Export Current Data</a>
+                            </div>
                         </div>
                         <!-- Google Calendar -->
                         <div class="p-3 border rounded">
@@ -146,7 +149,6 @@
                 <div class="p-3 border rounded bg-body-tertiary">
                     <h5 class="mb-3">Report Exporter</h5>
                     <div class="row align-items-end gy-3">
-                        <!-- Period Selector Column -->
                         <div class="col-lg-auto col-md-6">
                              <label for="export-period-select" class="form-label small fw-bold">Export Period:</label>
                              <select id="export-period-select" class="form-select form-select-sm">
@@ -158,7 +160,6 @@
                                 <option value="custom">Custom Range...</option>
                             </select>
                         </div>
-                        <!-- Status Filter Column -->
                         <div class="col-lg-auto col-md-6">
                             <label class="form-label small fw-bold d-block mb-2">Filter by Status:</label>
                             <div class="form-check form-check-inline">
@@ -174,7 +175,6 @@
                                 <label class="form-check-label small" for="statusWarning">Warning</label>
                             </div>
                         </div>
-                        <!-- Custom Date Range Column -->
                         <div id="custom-date-range" class="col-lg-auto col-md-12 d-flex" style="display: none !important;">
                              <div>
                                 <label for="custom-start-date" class="form-label small fw-bold">Start Date:</label>
@@ -185,7 +185,6 @@
                                 <input type="date" id="custom-end-date" class="form-control form-control-sm">
                             </div>
                         </div>
-                        <!-- Export Buttons Column -->
                         <div class="col-lg-auto ms-lg-auto">
                             <div class="d-flex mt-2 mt-lg-0">
                                 <button id="export-pdf-btn" class="btn btn-sm btn-danger">
@@ -211,7 +210,7 @@
         </div>
     </div>
 
-    <!-- Add/Edit Employee Modal -->
+    <!-- Add/Edit Modal -->
     <div class="modal fade" id="data-modal" tabindex="-1" aria-labelledby="dataModalLabel" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -234,7 +233,6 @@
             </div>
         </div>
     </div>
-
 
     <!-- JavaScript Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
