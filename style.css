@@ -124,4 +124,13 @@ body {
 }
 [data-bs-theme="dark"] .spinner-overlay { background-color: rgba(33, 37, 41, 0.7); }
 .spinner-overlay.visible { visibility: visible; opacity: 1; }
-.tooltip-inner { white-space: pre-wrap; text-align: left; max-width: 400px; }
+
+/* *** FIX: Tooltip z-index issue *** */
+.tooltip {
+    z-index: 1080 !important; /* Higher than FullCalendar's popover (101) and Bootstrap modals (1055) if needed */
+}
+.tooltip-inner { 
+    white-space: pre-wrap; 
+    text-align: left; 
+    max-width: 400px; 
+}
