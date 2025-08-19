@@ -159,11 +159,20 @@ function initializeCalendar() {
     const calendarEl = document.getElementById('calendar');
     calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
-        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
+        
+        // CHANGE #1: Use our new custom view 'listSevenDay' instead of 'listWeek'
+        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listSevenDay' },
 
-        // By default, list views hide days that have no events. 
-        // Setting this to false forces all days in the range to be displayed.
-        omitZeroEvents: false, 
+        // This is still needed to show empty days within the 7-day range
+        omitZeroEvents: false,
+
+        // CHANGE #2: Define our custom 7-day list view
+        views: {
+            listSevenDay: {
+                type: 'list',
+                duration: { days: 7 },
+            }
+        },
 
         dayMaxEvents: function(arg) { return 4; },
         eventOrder: 'extendedProps.sortPriority desc,extendedProps.titleText',
@@ -196,7 +205,10 @@ function initializeCalendar() {
             }
         },
         listDayFormat: { month: 'long', day: 'numeric', year: 'numeric', weekday: 'long' },
-        buttonText: { listWeek: 'week', dayGridMonth: 'month' },
+        
+        // CHANGE #3: Update the button text to refer to our new custom view
+        buttonText: { listSevenDay: 'week', dayGridMonth: 'month' },
+        
         noEventsContent: 'All customers are fully covered for this period.',
     });
     calendar.setOption('events', fetchCalendarEvents);
