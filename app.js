@@ -159,18 +159,14 @@ function initializeCalendar() {
     const calendarEl = document.getElementById('calendar');
     calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
-        
-        // CHANGE #1: Use our new custom view 'listSevenDay' instead of 'listWeek'
-        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listSevenDay' },
+        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
 
-        // This is still needed to show empty days within the 7-day range
-        omitZeroEvents: false,
-
-        // CHANGE #2: Define our custom 7-day list view
+        // *** THE DEFINITIVE FIX IS HERE ***
+        // Instead of a global setting, we are now targeting the 'listWeek' view specifically.
+        // This is a more robust way to ensure the setting is applied correctly.
         views: {
-            listSevenDay: {
-                type: 'list',
-                duration: { days: 7 },
+            listWeek: {
+                omitZeroEvents: false // Explicitly tell this specific view to NOT hide empty days.
             }
         },
 
@@ -205,11 +201,11 @@ function initializeCalendar() {
             }
         },
         listDayFormat: { month: 'long', day: 'numeric', year: 'numeric', weekday: 'long' },
+        buttonText: { listWeek: 'week', dayGridMonth: 'month' },
         
-        // CHANGE #3: Update the button text to refer to our new custom view
-        buttonText: { listSevenDay: 'week', dayGridMonth: 'month' },
-        
-        noEventsContent: 'All customers are fully covered for this period.',
+        // *** IMPROVEMENT ***
+        // This new message will now appear under the header of any empty day.
+        noEventsContent: 'No coverage issues or leave scheduled.',
     });
     calendar.setOption('events', fetchCalendarEvents);
     calendar.render();
