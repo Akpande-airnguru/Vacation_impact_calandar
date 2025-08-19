@@ -46,8 +46,8 @@ function setupEventListeners() {
         const theme = e.target.checked ? 'dark' : 'light';
         document.documentElement.setAttribute('data-bs-theme', theme);
         localStorage.setItem('theme', theme);
-        initializeCharts(); // Re-init to apply new theme colors
-        updateDashboardAndCharts(); // Redraw with existing data
+        initializeCharts();
+        updateDashboardAndCharts();
     });
     document.getElementById('csv-import').addEventListener('change', handleCsvImport);
     document.getElementById('download-template-btn').addEventListener('click', downloadCsvTemplate);
@@ -100,7 +100,6 @@ function renderManagementTables() {
 // =================================================================================
 // 3. MODAL & DATA EDITING LOGIC (No changes needed)
 // =================================================================================
-
 function openDataModal(type, id = null) {
     const formFields = document.getElementById('form-fields');
     document.getElementById('edit-id').value = id;
@@ -153,7 +152,7 @@ function parseGenericFields(row) { const fields = {}; for (let i = 1; i <= 4; i+
 function processGenericCsvData(data) { appData.customers = []; appData.employees = []; appData.regions = []; const generateId = () => Date.now() + Math.random(); data.forEach(row => { const type = row.type?.toLowerCase().trim(); const fields = parseGenericFields(row); if (type === 'employee') { appData.employees.push({ id: generateId(), name: row.name, country: row.country, team: fields.team }); } else if (type === 'customer' || type === 'region') { const requirement = { teams: (fields.required_team || '').split(',').map(t => t.trim()), min: parseInt(fields.required_employee_per_team, 10) || 1 }; if (type === 'customer') { let customer = appData.customers.find(c => c.name === row.name); if (!customer) { customer = { id: generateId(), name: row.name, country: row.country, requirements: [] }; appData.customers.push(customer); } customer.requirements.push(requirement); } else { let region = appData.regions.find(r => r.name === row.name); if (!region) { region = { id: generateId(), name: row.name, countries: (row.country || '').split(',').map(c => c.trim()), requirements: [] }; appData.regions.push(region); } region.requirements.push(requirement); } } }); }
 
 // =================================================================================
-// 5. CALENDAR LOGIC ENGINE (No changes needed)
+// 5. CALENDAR LOGIC ENGINE (FIXED)
 // =================================================================================
 
 function initializeCalendar() {
@@ -161,8 +160,12 @@ function initializeCalendar() {
     calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
-        views: { listWeek: { omitZeroEvents: false } }, dayMaxEvents: 4, eventOrder: 'extendedProps.sortPriority desc,title',
+        views: { listWeek: { omitZeroEvents: false } },
+        dayMaxEvents: false, // **FIX**: Show all events, don't collapse
+        eventOrder: 'extendedProps.sortPriority desc,title',
         loading: (isLoading) => document.getElementById('calendar-loader').classList.toggle('visible', isLoading),
+        // **FIX**: Use eventsSet callback to prevent race conditions
+        eventsSet: (events) => updateDashboardAndCharts(),
         dayCellDidMount: (arg) => {
             const dateStr = arg.date.toISOString().split('T')[0];
             const status = dailyStatusHeatmap[dateStr];
@@ -187,20 +190,9 @@ function generateImpactEvents(fetchInfo, leaveEvents = []) { const impactEvents 
 
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
     try {
-        const today = new Date();
-        const forecastEnd = new Date();
-        forecastEnd.setDate(today.getDate() + 14);
-        
-        // **FIX**: Calculate one large range to fetch all data needed for view AND dashboard
-        const overallStart = new Date(Math.min(fetchInfo.start, today));
-        const overallEnd = new Date(Math.max(fetchInfo.end, forecastEnd));
-        
-        const googleLeaveEvents = await fetchGoogleCalendarData({ start: overallStart, end: overallEnd, startStr: overallStart.toISOString(), endStr: overallEnd.toISOString() });
-        const impactEvents = generateImpactEvents({ start: overallStart, end: overallEnd }, googleLeaveEvents);
-        
-        const allEvents = [...impactEvents, ...googleLeaveEvents];
-        successCallback(allEvents);
-        updateDashboardAndCharts(allEvents);
+        const leaveEvents = await fetchGoogleCalendarData(fetchInfo);
+        const impactEvents = generateImpactEvents(fetchInfo, leaveEvents);
+        successCallback([...impactEvents, ...leaveEvents]);
     } catch (error) { 
         console.error("Failed to fetch/process events:", error); 
         failureCallback(error); 
@@ -218,16 +210,11 @@ async function populateCalendarSelectors() { try { const response = await gapi.c
 // 7. DASHBOARD & CHARTS LOGIC (FIXED)
 // =================================================================================
 
-function initializeCharts() {
-    if (issuesChart) issuesChart.destroy(); if (leaveChart) leaveChart.destroy();
-    const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
-    const textColor = isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)';
-    issuesChart = new Chart(document.getElementById('issues-chart'), { type: 'bar', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Coverage Forecast (Next 14 Days)', color: textColor }, legend: { display: false }, tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${context.raw}` } } }, scales: { x: { stacked: true, ticks: { color: textColor } }, y: { stacked: true, beginAtZero: true, ticks: { color: textColor, stepSize: 1 } } } } });
-    leaveChart = new Chart(document.getElementById('leave-chart'), { type: 'doughnut', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Leave Types', color: textColor }, legend: { position: 'right', labels: { color: textColor } }, tooltip: { callbacks: { label: (context) => { const label = context.label || ''; const details = context.chart.data.tooltipDetails[label]; return details && details.length ? `${label}: ${details.length}` : label; }, afterLabel: (context) => { const details = context.chart.data.tooltipDetails[context.label]; return details && details.length ? details.slice(0, 5).join('\n') + (details.length > 5 ? '\n...' : '') : ''; } } } } } });
-}
+function initializeCharts() { if (issuesChart) issuesChart.destroy(); if (leaveChart) leaveChart.destroy(); const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark'; const textColor = isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)'; issuesChart = new Chart(document.getElementById('issues-chart'), { type: 'bar', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Coverage Forecast (Next 14 Days)', color: textColor }, legend: { display: false }, tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${context.raw}` } } }, scales: { x: { stacked: true, ticks: { color: textColor } }, y: { stacked: true, beginAtZero: true, ticks: { color: textColor, stepSize: 1 } } } } }); leaveChart = new Chart(document.getElementById('leave-chart'), { type: 'doughnut', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Leave Types', color: textColor }, legend: { position: 'right', labels: { color: textColor } }, tooltip: { callbacks: { label: (context) => { const label = context.label || ''; const details = context.chart.data.tooltipDetails[label]; return details && details.length ? `${label}: ${details.length}` : label; }, afterLabel: (context) => { const details = context.chart.data.tooltipDetails[context.label]; return details && details.length ? details.slice(0, 5).join('\n') + (details.length > 5 ? '\n...' : '') : ''; } } } } } }); }
 
-function updateDashboardAndCharts(allEvents) {
-    if (!allEvents) return;
+function updateDashboardAndCharts() {
+    const allEvents = calendar.getEvents();
+    if (!allEvents.length && gapi.client.getToken()) return;
 
     const todayStr = new Date().toISOString().split('T')[0];
     const impactEvents = allEvents.filter(e => e.extendedProps.type === 'impact');
@@ -270,6 +257,7 @@ function updateDashboardAndCharts(allEvents) {
     leaveChart.options.plugins.title.text = `Leave Types (${view.title})`;
     leaveChart.update();
 }
+
 
 // =================================================================================
 // 8. REPORTING & EXPORTING (No changes needed)
