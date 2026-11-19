@@ -134,8 +134,8 @@
                             <button id="signout_button" class="btn btn-secondary" style="display: none;">Sign Out</button>
                             <div id="calendar-selection-ui" class="mt-3" style="display: none;">
                                 <div class="mb-2">
-                                    <label for="vacation-calendar-select" class="form-label small"><b>Vacation Calendar:</b></label>
-                                    <select id="vacation-calendar-select" class="form-select form-select-sm"></select>
+                                    <label class="form-label small"><b>Leave Calendars:</b> <span class="text-muted">(tick every calendar that means a person is unavailable)</span></label>
+                                    <div id="vacation-calendar-list" class="border rounded p-2 small" style="max-height: 180px; overflow-y: auto;"></div>
                                 </div>
                                 <div>
                                     <label for="holiday-calendar-select" class="form-label small"><b>Official Holiday Calendar:</b></label>
@@ -209,6 +209,7 @@
                 <div id="calendar-loader" class="spinner-overlay">
                     <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
                 </div>
+                <div id="sync-status" style="display: none;"></div>
                 <div id='calendar'></div>
             </div>
         </div>

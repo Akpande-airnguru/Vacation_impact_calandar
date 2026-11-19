@@ -7,6 +7,9 @@
 let appData = { customers: [], employees: [], regions: [], settings: { vacationCalendarId: null, holidayCalendarId: null } };
 let calendar, dataModal, issuesChart, leaveChart, customersTable, regionsTable, employeesTable;
 let dailyStatusHeatmap = {};
+let calendarNameById = {};          // Google calendar id -> display name
+let tokenExpiresAt = null;          // ms timestamp when the Google access token expires
+let syncMessages = { list: [], fetch: [] };
 
 const GOOGLE_API_KEY = 'AIzaSyCXlCu4Xl4iu94TwGmtOHv_BvEUZxlwPSk';
 const GOOGLE_CLIENT_ID = '612439385835-vvddjfvh151k187liqauarg6gnl0tjds.apps.googleusercontent.com';
@@ -39,6 +42,35 @@ function loadDataFromLocalStorage() {
         const loadedData = JSON.parse(savedData);
         appData = { customers: [], employees: [], regions: [], settings: { vacationCalendarId: null, holidayCalendarId: null }, ...loadedData };
     }
+    getVacationCalendarIds(); // migrates the old single vacationCalendarId into vacationCalendarIds
+}
+
+// Leave calendars: several can be selected (e.g. "Vacations" and "Travel").
+// vacationCalendarId is kept in sync with the first entry so older versions of the app still work.
+function hasGoogleToken() {
+    return typeof gapi !== 'undefined' && !!gapi.client && typeof gapi.client.getToken === 'function' && gapi.client.getToken() !== null;
+}
+function getVacationCalendarIds() {
+    const s = appData.settings;
+    if (!Array.isArray(s.vacationCalendarIds)) s.vacationCalendarIds = s.vacationCalendarId ? [s.vacationCalendarId] : [];
+    return s.vacationCalendarIds;
+}
+function setVacationCalendarIds(ids) {
+    appData.settings.vacationCalendarIds = [...new Set(ids)];
+    appData.settings.vacationCalendarId = appData.settings.vacationCalendarIds[0] || null;
+}
+
+// Sync status banner: makes failures visible instead of silently showing "covered".
+function setSyncMessages(source, messages) { syncMessages[source] = messages; renderSyncStatus(); }
+function renderSyncStatus() {
+    const el = document.getElementById('sync-status');
+    if (!el) return;
+    const all = [...syncMessages.list, ...syncMessages.fetch];
+    if (!all.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+    const level = all.some(m => m.level === 'danger') ? 'danger' : 'warning';
+    el.className = `alert alert-${level} py-2 small`;
+    el.innerHTML = [...new Set(all.map(m => m.text))].map(t => `<div><i class="bi bi-exclamation-triangle-fill me-1"></i>${t}</div>`).join('');
+    el.style.display = 'block';
 }
 
 function setupEventListeners() {
@@ -55,7 +87,10 @@ function setupEventListeners() {
     document.getElementById('export-data-btn').addEventListener('click', handleDataExport);
     document.getElementById('authorize_button').addEventListener('click', handleAuthClick);
     document.getElementById('signout_button').addEventListener('click', handleSignoutClick);
-    document.getElementById('vacation-calendar-select').addEventListener('change', (e) => { appData.settings.vacationCalendarId = e.target.value; saveDataToLocalStorage(); calendar.refetchEvents(); });
+    document.getElementById('vacation-calendar-list').addEventListener('change', () => {
+        const ids = [...document.querySelectorAll('#vacation-calendar-list input[type=checkbox]:checked')].map(cb => cb.value);
+        setVacationCalendarIds(ids); saveDataToLocalStorage(); calendar.refetchEvents();
+    });
     document.getElementById('holiday-calendar-select').addEventListener('change', (e) => { appData.settings.holidayCalendarId = e.target.value; saveDataToLocalStorage(); calendar.refetchEvents(); });
     document.getElementById('export-pdf-btn').addEventListener('click', handlePdfExport);
     document.getElementById('export-excel-btn').addEventListener('click', handleXlsxExport);
@@ -198,7 +233,77 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
         failureCallback(error); 
     }
 }
-async function fetchGoogleCalendarData(fetchInfo) { const { vacationCalendarId, holidayCalendarId } = appData.settings; if (gapi.client.getToken() === null) return []; const { startStr, endStr } = fetchInfo; const promises = []; if (vacationCalendarId) { promises.push(gapi.client.calendar.events.list({ calendarId: vacationCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'vacation' }))); } if (holidayCalendarId) { promises.push(gapi.client.calendar.events.list({ calendarId: holidayCalendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'officialHoliday' }))); } const employeeCountryCalendars = [...new Set(appData.employees.filter(e => e.country).map(e => e.country.toLowerCase()))].map(code => ({ calendarId: `en.${code.toLowerCase()}#holiday@group.v.calendar.google.com`, countryCode: code })); employeeCountryCalendars.forEach(cal => { promises.push(gapi.client.calendar.events.list({ calendarId: cal.calendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }).then(response => ({ response, type: 'publicHoliday', countryCode: cal.countryCode })).catch(() => null)); }); const results = await Promise.allSettled(promises); let allEvents = []; results.forEach(result => { if (result.status === 'fulfilled' && result.value) { const { response, type, countryCode } = result.value; const events = response.result.items || []; const mappedEvents = events.map(event => { let displayDescription = event.summary; let employeeName = null; let applicableCountries = []; if (type === 'vacation') { employeeName = event.summary.trim(); displayDescription = `🌴 ${employeeName}`; } else { if (countryCode) { applicableCountries.push(countryCode.toLowerCase()); } const titleMatch = event.summary.match(/^([A-Z]{3}(?:\s*,\s*[A-Z]{3})*)\s*-\s*(.*)$/); if (titleMatch) { const countriesFromTitle = titleMatch[1].split(',').map(c => c.trim().toLowerCase()); applicableCountries = [...new Set([...applicableCountries, ...countriesFromTitle])]; displayDescription = `🎉 ${countriesFromTitle.join(', ').toUpperCase()} - ${titleMatch[2]}`; } else { displayDescription = `🎉 ${event.summary}`; } } return { title: displayDescription, start: event.start.date || event.start.dateTime, end: event.end.date || event.end.dateTime, allDay: !!event.start.date, className: type === 'vacation' ? 'vacation-event' : 'holiday-event', extendedProps: { employeeName, type, description: displayDescription.replace(/^[🌴🎉]\s*/, ''), applicableCountries, sortPriority: 100 } }; }); allEvents = allEvents.concat(mappedEvents); } }); return allEvents; }
+async function fetchGoogleCalendarData(fetchInfo) {
+    const vacationIds = getVacationCalendarIds();
+    const { holidayCalendarId } = appData.settings;
+    const configured = vacationIds.length > 0 || !!holidayCalendarId;
+
+    if (!hasGoogleToken()) {
+        setSyncMessages('fetch', configured ? [{ level: 'warning', text: 'Not connected to Google Calendar, so no vacations or holidays are loaded and coverage may look better than it is. Click "Connect Google Calendar".' }] : []);
+        return [];
+    }
+    if (tokenExpiresAt && Date.now() > tokenExpiresAt) {
+        setSyncMessages('fetch', [{ level: 'danger', text: 'Your Google Calendar connection has expired, so leave data is not up to date. Click "Refresh Connection".' }]);
+        return [];
+    }
+
+    const { startStr, endStr } = fetchInfo;
+    // gapi returns its own thenable (no .catch), so wrap it in a real Promise
+    const listEvents = (calendarId) => Promise.resolve(gapi.client.calendar.events.list({ calendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }));
+    const jobs = [];
+    vacationIds.forEach(id => jobs.push({ type: 'vacation', calendarId: id, promise: listEvents(id) }));
+    if (holidayCalendarId) jobs.push({ type: 'officialHoliday', calendarId: holidayCalendarId, promise: listEvents(holidayCalendarId) });
+    const countryCodes = [...new Set(appData.employees.filter(e => e.country).map(e => e.country.toLowerCase()))];
+    // Country public-holiday calendars may not exist for every code, so their failures are ignored (as before).
+    countryCodes.forEach(code => jobs.push({ type: 'publicHoliday', countryCode: code, calendarId: `en.${code}#holiday@group.v.calendar.google.com`, promise: listEvents(`en.${code}#holiday@group.v.calendar.google.com`).catch(() => null) }));
+
+    const results = await Promise.allSettled(jobs.map(j => j.promise));
+    const issues = [];
+    let allEvents = [];
+    results.forEach((result, i) => {
+        const job = jobs[i];
+        const calName = calendarNameById[job.calendarId] || job.calendarId;
+        if (result.status === 'rejected') {
+            const err = result.reason || {};
+            const code = err.status || err.result?.error?.code;
+            const msg = err.result?.error?.message || err.message || 'unknown error';
+            console.error(`Calendar fetch failed for ${calName}:`, err);
+            if (code === 401) issues.push({ level: 'danger', text: 'Your Google Calendar connection has expired, so leave data is not up to date. Click "Refresh Connection".' });
+            else issues.push({ level: 'danger', text: `Could not read calendar "${calName}" (${code || 'error'}: ${msg}). Its events are NOT included.` });
+            return;
+        }
+        if (!result.value) return;
+        const items = result.value.result.items || [];
+        const mapped = items.map(event => {
+            const summary = (event.summary || '').trim(); // events without a visible title used to crash the whole fetch
+            let displayDescription = summary;
+            let description = summary;
+            let employeeName = null;
+            let applicableCountries = [];
+            if (job.type === 'vacation') {
+                employeeName = summary || null;
+                displayDescription = `🌴 ${summary || '(no title)'}`;
+                description = `${summary || '(no title)'} [${calName}]`;
+            } else {
+                if (job.countryCode) applicableCountries.push(job.countryCode.toLowerCase());
+                const titleMatch = summary.match(/^([A-Z]{3}(?:\s*,\s*[A-Z]{3})*)\s*-\s*(.*)$/);
+                if (titleMatch) {
+                    const countriesFromTitle = titleMatch[1].split(',').map(c => c.trim().toLowerCase());
+                    applicableCountries = [...new Set([...applicableCountries, ...countriesFromTitle])];
+                    displayDescription = `🎉 ${countriesFromTitle.join(', ').toUpperCase()} - ${titleMatch[2]}`;
+                } else {
+                    displayDescription = `🎉 ${summary}`;
+                }
+                description = displayDescription.replace(/^🎉\s*/, '');
+            }
+            return { title: displayDescription, start: event.start.date || event.start.dateTime, end: event.end.date || event.end.dateTime, allDay: !!event.start.date, className: job.type === 'vacation' ? 'vacation-event' : 'holiday-event', extendedProps: { employeeName, type: job.type, description, applicableCountries, sourceCalendar: calName, sortPriority: 100 } };
+        });
+        allEvents = allEvents.concat(mapped);
+    });
+    if (!vacationIds.length) issues.push({ level: 'warning', text: 'No leave calendar is selected, so vacations are not counted. Tick one or more calendars under Google Calendar Sync.' });
+    setSyncMessages('fetch', issues);
+    return allEvents;
+}
 
 // =================================================================================
 // 7. DASHBOARD & CHARTS LOGIC (FIXED)
@@ -208,7 +313,7 @@ function initializeCharts() { if (issuesChart) issuesChart.destroy(); if (leaveC
 
 async function updateDashboardAndCharts() {
     const allEvents = calendar.getEvents();
-    if (!allEvents.length && gapi.client.getToken()) return;
+    if (!allEvents.length && hasGoogleToken()) return;
 
     const todayStr = new Date().toISOString().split('T')[0];
     const impactEvents = allEvents.filter(e => e.extendedProps.type === 'impact');
@@ -278,9 +383,34 @@ async function handleXlsxExport() { const btn = document.getElementById('export-
 // 9. GOOGLE API INITIALIZATION & AUTH (RESTORED)
 // =================================================================================
 
-window.gisLoaded = function() { tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '', }); gisInited = true; maybeEnableButtons(); };
-async function initializeGapiClient() { try { await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS }); gapiInited = true; maybeEnableButtons(); if (gapi.client.getToken()) { populateCalendarSelectors(); } } catch (e) { console.error("Error initializing GAPI client:", e); } }
+window.gisLoaded = function() { if (gisInited) return; tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '', }); gisInited = true; maybeEnableButtons(); };
+// If the Google sign-in script finished loading before this file ran, its onload missed gisLoaded, so start it here.
+if (window.google && window.google.accounts && window.google.accounts.oauth2) window.gisLoaded();
+async function initializeGapiClient() { try { await gapi.client.init({ apiKey: GOOGLE_API_KEY, discoveryDocs: DISCOVERY_DOCS }); gapiInited = true; maybeEnableButtons(); if (hasGoogleToken()) { populateCalendarSelectors(); } } catch (e) { console.error("Error initializing GAPI client:", e); const err = e && (e.result?.error || e.error || e); const msg = (err && (err.message || err.details)) || JSON.stringify(e); setSyncMessages('list', [{ level: 'danger', text: `Google Calendar could not start (${err?.code || err?.status || 'error'}: ${msg}). The Connect button stays hidden until this is fixed.` }]); } }
 function maybeEnableButtons() { if (gapiInited && gisInited) { document.getElementById('authorize_button').style.visibility = 'visible'; } }
-function handleAuthClick() { tokenClient.callback = async (resp) => { if (resp.error) throw (resp); document.getElementById('signout_button').style.display = 'block'; document.getElementById('authorize_button').innerText = 'Refresh Connection'; await populateCalendarSelectors(); calendar.refetchEvents(); }; if (gapi.client.getToken() === null) { tokenClient.requestAccessToken({ prompt: 'consent' }); } else { tokenClient.requestAccessToken({ prompt: '' }); } }
-function handleSignoutClick() { const token = gapi.client.getToken(); if (token !== null) { google.accounts.oauth2.revoke(token.access_token); gapi.client.setToken(''); document.getElementById('signout_button').style.display = 'none'; document.getElementById('authorize_button').innerText = 'Connect Google Calendar'; document.getElementById('calendar-selection-ui').style.display = 'none'; appData.settings.vacationCalendarId = null; appData.settings.holidayCalendarId = null; saveDataToLocalStorage(); calendar.refetchEvents(); } }
-async function populateCalendarSelectors() { try { const response = await gapi.client.calendar.calendarList.list(); const calendars = response.result.items; const vacationSelect = document.getElementById('vacation-calendar-select'); const holidaySelect = document.getElementById('holiday-calendar-select'); vacationSelect.innerHTML = '<option value="">-- Select a calendar --</option>'; holidaySelect.innerHTML = '<option value="">-- Select a calendar --</option>'; calendars.forEach(cal => { const option = new Option(cal.summary, cal.id); vacationSelect.add(option.cloneNode(true)); holidaySelect.add(option); }); if (appData.settings.vacationCalendarId) { vacationSelect.value = appData.settings.vacationCalendarId; } if (appData.settings.holidayCalendarId) { holidaySelect.value = appData.settings.holidayCalendarId; } document.getElementById('calendar-selection-ui').style.display = 'block'; } catch (error) { console.error("Could not fetch user's calendar list:", error); alert("Could not load your calendar list. Please try refreshing or re-connecting."); } }
+function handleAuthClick() { tokenClient.callback = async (resp) => { if (resp.error) throw (resp); tokenExpiresAt = Date.now() + ((Number(resp.expires_in) || 3600) - 60) * 1000; document.getElementById('signout_button').style.display = 'block'; document.getElementById('authorize_button').innerText = 'Refresh Connection'; await populateCalendarSelectors(); calendar.refetchEvents(); }; if (gapi.client.getToken() === null) { tokenClient.requestAccessToken({ prompt: 'consent' }); } else { tokenClient.requestAccessToken({ prompt: '' }); } }
+function handleSignoutClick() { const token = gapi.client.getToken(); if (token !== null) { google.accounts.oauth2.revoke(token.access_token); gapi.client.setToken(''); document.getElementById('signout_button').style.display = 'none'; document.getElementById('authorize_button').innerText = 'Connect Google Calendar'; document.getElementById('calendar-selection-ui').style.display = 'none'; tokenExpiresAt = null; setVacationCalendarIds([]); appData.settings.holidayCalendarId = null; saveDataToLocalStorage(); calendar.refetchEvents(); } }
+async function populateCalendarSelectors() {
+    try {
+        const response = await gapi.client.calendar.calendarList.list();
+        const calendars = response.result.items || [];
+        calendarNameById = Object.fromEntries(calendars.map(c => [c.id, c.summaryOverride || c.summary]));
+        const savedIds = getVacationCalendarIds();
+        const missing = savedIds.filter(id => !calendarNameById[id]);
+
+        const list = document.getElementById('vacation-calendar-list');
+        const esc = (t) => String(t).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+        const row = (id, label, extra = '') => `<div class="form-check"><input class="form-check-input" type="checkbox" value="${esc(id)}" id="vc-${esc(id)}" ${savedIds.includes(id) ? 'checked' : ''}><label class="form-check-label" for="vc-${esc(id)}">${esc(label)}${extra}</label></div>`;
+        list.innerHTML = missing.map(id => row(id, `Unknown calendar (${id})`, ' <span class="badge text-bg-danger">not in your list</span>')).join('') + calendars.map(c => row(c.id, c.summaryOverride || c.summary)).join('');
+
+        const holidaySelect = document.getElementById('holiday-calendar-select');
+        holidaySelect.innerHTML = '<option value="">-- Select a calendar --</option>';
+        calendars.forEach(cal => holidaySelect.add(new Option(cal.summaryOverride || cal.summary, cal.id)));
+        if (appData.settings.holidayCalendarId) holidaySelect.value = appData.settings.holidayCalendarId;
+
+        const listIssues = missing.map(id => ({ level: 'warning', text: `A saved leave calendar is no longer in your Google Calendar list (${esc(id)}). It may have been replaced by a new calendar or unshared. Untick it and tick the current one.` }));
+        if (appData.settings.holidayCalendarId && !calendarNameById[appData.settings.holidayCalendarId]) listIssues.push({ level: 'warning', text: 'The saved Official Holiday calendar is no longer in your Google Calendar list. Please re-select it.' });
+        setSyncMessages('list', listIssues);
+        document.getElementById('calendar-selection-ui').style.display = 'block';
+    } catch (error) { console.error("Could not fetch user's calendar list:", error); alert("Could not load your calendar list. Please try refreshing or re-connecting."); }
+}
