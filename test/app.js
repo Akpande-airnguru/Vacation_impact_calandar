@@ -248,7 +248,8 @@ async function fetchGoogleCalendarData(fetchInfo) {
     }
 
     const { startStr, endStr } = fetchInfo;
-    const listEvents = (calendarId) => gapi.client.calendar.events.list({ calendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' });
+    // gapi returns its own thenable (no .catch), so wrap it in a real Promise
+    const listEvents = (calendarId) => Promise.resolve(gapi.client.calendar.events.list({ calendarId, timeMin: startStr, timeMax: endStr, singleEvents: true, orderBy: 'startTime' }));
     const jobs = [];
     vacationIds.forEach(id => jobs.push({ type: 'vacation', calendarId: id, promise: listEvents(id) }));
     if (holidayCalendarId) jobs.push({ type: 'officialHoliday', calendarId: holidayCalendarId, promise: listEvents(holidayCalendarId) });
